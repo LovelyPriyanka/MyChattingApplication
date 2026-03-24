@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>My Chatting Application</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-glow page-glow-left"></div>
+    <div class="page-glow page-glow-right"></div>
+    <main class="app-shell">
+      <section class="card auth-card" id="auth-card">
+        <div class="auth-brand">
+          <h1>TalkNest</h1>
+          <p>a place where friends chat</p>
+        </div>
+
+        <div class="auth-tabs">
+          <button type="button" class="tab-button active" id="show-login">Login</button>
+          <button type="button" class="tab-button" id="show-register">Create account</button>
+        </div>
+
+        <form id="login-form" class="stack auth-form">
+          <input id="login-email" type="text" placeholder="Email or username" maxlength="120" required />
+          <input id="login-password" type="password" placeholder="Password" minlength="4" required />
+          <button type="submit">Login</button>
+          <div class="login-secondary-actions">
+            <button type="button" id="forgot-password-link" class="link-button">Forgot Password?</button>
+          </div>
+        </form>
+
+        <form id="forgot-password-form" class="stack auth-form hidden" novalidate>
+          <input id="forgot-email" type="email" placeholder="Enter your email" maxlength="120" />
+          <button id="forgot-send-otp-button" type="button">Send OTP</button>
+
+          <div id="forgot-otp-section" class="stack hidden">
+            <input
+              id="forgot-otp"
+              type="text"
+              placeholder="Enter 6-digit OTP"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+            />
+            <div class="otp-actions">
+              <button id="forgot-verify-otp-button" type="button">Verify OTP</button>
+              <button id="forgot-resend-otp-button" type="button" class="ghost-button">Resend OTP</button>
+            </div>
+          </div>
+
+          <div id="forgot-reset-section" class="stack hidden">
+            <input id="forgot-new-password" type="password" placeholder="New password" minlength="4" />
+            <button id="forgot-reset-password-button" type="button">Reset Password</button>
+          </div>
+
+          <div class="login-secondary-actions">
+            <button type="button" id="forgot-back-to-login-button" class="link-button">Back to Login</button>
+          </div>
+        </form>
+
+        <form id="register-form" class="stack auth-form hidden">
+          <input id="register-email" type="email" placeholder="Email" maxlength="120" required />
+          <input id="register-username" type="text" placeholder="Create username" maxlength="30" required />
+          <input id="register-password" type="password" placeholder="Create password" minlength="4" required />
+          <button id="register-submit-button" type="submit">Send OTP</button>
+
+          <div id="register-otp-section" class="stack hidden">
+            <input
+              id="register-otp"
+              type="text"
+              placeholder="Enter 6-digit OTP"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+            />
+            <div class="otp-actions">
+              <button id="verify-otp-button" type="button">Verify OTP</button>
+              <button id="resend-otp-button" type="button" class="ghost-button">Resend OTP</button>
+            </div>
+          </div>
+        </form>
+
+        <p id="auth-message" class="auth-message"></p>
+      </section>
+
+      <section class="card chat-layout hidden" id="chat-section">
+        <aside class="sidebar">
+          <div class="sidebar-top">
+            <div class="sidebar-title-wrap">
+              <h2 id="room-title">My Chats</h2>
+              <small id="status-text" class="hidden"></small>
+            </div>
+            <div class="top-actions">
+              <button type="button" id="theme-toggle-button" class="icon-button" aria-label="Toggle theme">☀️</button>
+              <button type="button" id="status-button" class="icon-button" aria-label="Open status" title="Open status">🟢</button>
+              <button type="button" id="friends-button" class="icon-button" aria-label="Open friends">
+                👥
+                <span id="friends-request-badge" class="request-badge hidden">0</span>
+              </button>
+              <button type="button" id="settings-button" class="icon-button" aria-label="Open settings">⚙️</button>
+            </div>
+          </div>
+          <div class="current-user-box">
+            <div class="profile-avatar" id="profile-avatar">U</div>
+            <div class="profile-text">
+              <span>You are logged in as</span>
+              <strong id="current-username">-</strong>
+              <small id="current-about">Available to chat</small>
+            </div>
+          </div>
+          <div class="chat-list-block">
+            <strong>Friends</strong>
+            <small class="list-help">Only accepted friends are shown here.</small>
+            <input
+              id="sidebar-friends-search"
+              class="sidebar-friends-search"
+              type="text"
+              maxlength="30"
+              placeholder="Search friends"
+              aria-label="Search friends"
+            />
+            <ul id="users-list" class="chat-list"></ul>
+          </div>
+        </aside>
+
+        <section class="conversation-panel">
+          <div class="conversation-header">
+            <div class="conversation-user-wrap">
+              <button type="button" id="back-to-list-button" class="icon-button back-button hidden" aria-label="Back to chat list">←</button>
+              <div class="chat-avatar" id="chat-avatar">?</div>
+              <div>
+                <h3 id="chat-with-label">Select chat</h3>
+                <small id="chat-with-status">Offline</small>
+              </div>
+            </div>
+            <div class="chat-menu-wrap">
+              <button
+                type="button"
+                id="camera-capture-button"
+                class="icon-button hidden"
+                aria-label="Open camera"
+                title="Capture photo or video"
+              >
+                📷
+              </button>
+              <button type="button" id="chat-menu-button" class="icon-button hidden" aria-label="Chat menu">☰</button>
+              <div id="chat-menu-panel" class="chat-menu-panel hidden">
+                <div class="chat-menu-profile">
+                  <div class="chat-menu-avatar" id="chat-menu-avatar">?</div>
+                  <div class="chat-menu-profile-text">
+                    <strong id="chat-menu-name">Select chat</strong>
+                    <small id="chat-menu-about">No profile info</small>
+                  </div>
+                </div>
+                <button type="button" id="view-profile-button" class="ghost-button chat-menu-view">View profile</button>
+                <button type="button" id="edit-contact-style-button" class="ghost-button chat-menu-view">Edit nickname & color</button>
+                <button type="button" id="remove-friend-button" class="ghost-button chat-menu-view">Remove friend</button>
+                <button type="button" id="block-friend-button" class="ghost-button chat-menu-delete">Block friend</button>
+                <label for="delete-chat-date-input" class="chat-menu-date-label">Select date to delete</label>
+                <input type="date" id="delete-chat-date-input" class="chat-menu-date-input" aria-label="Select date to delete chat" />
+                <button type="button" id="clear-chat-button" class="ghost-button chat-menu-delete">Delete chat</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="messages" class="messages"></div>
+
+          <form id="message-form" class="message-form">
+            <div id="reply-composer" class="reply-composer hidden" aria-live="polite">
+              <div class="reply-composer-text" id="reply-composer-text"></div>
+              <button type="button" id="reply-composer-cancel" class="ghost-button">Cancel reply</button>
+            </div>
+            <div id="media-upload-progress" class="media-upload-progress hidden" aria-live="polite">
+              <div class="media-upload-progress-bar-wrap">
+                <div id="media-upload-progress-bar" class="media-upload-progress-bar"></div>
+              </div>
+              <small id="media-upload-progress-text">Uploading...</small>
+            </div>
+            <input id="message-input" type="text" placeholder="Type your message" maxlength="300" required />
+            <input id="media-file-input" type="file" accept="image/*,video/*" class="hidden" />
+            <button
+              type="button"
+              id="gallery-button"
+              class="icon-button media-picker-button"
+              aria-label="Send photo or video"
+              title="Send photo or video"
+            >
+              🖼️
+            </button>
+            <button
+              type="button"
+              id="voice-record-button"
+              class="icon-button voice-record-button"
+              aria-label="Start voice recording"
+              title="Record voice message"
+            >
+              🎤
+            </button>
+            <button
+              type="submit"
+              id="send-button"
+              class="icon-button send-button"
+              aria-label="Send message"
+              title="Send message"
+            >
+              ➤
+            </button>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <section class="modal-backdrop hidden" id="settings-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Profile & Settings</h3>
+          <button type="button" id="close-settings-button" class="icon-button" aria-label="Close settings">✕</button>
+        </div>
+
+        <form id="settings-form" class="stack settings-form">
+          <label class="field-label">
+            <span>Profile name</span>
+            <input id="settings-username" type="text" maxlength="30" placeholder="Your display name" />
+          </label>
+
+          <label class="field-label">
+            <span>About</span>
+            <input id="settings-about" type="text" maxlength="80" placeholder="Write a short status" />
+          </label>
+
+          <label class="field-label">
+            <span>Profile picture</span>
+            <input id="settings-avatar" type="file" accept="image/*" />
+          </label>
+
+          <label class="field-label">
+            <span>Profile visibility</span>
+            <select id="settings-visibility">
+              <option value="public">Public (everyone can see photo, status, about)</option>
+              <option value="private">Private (only friends can see photo, status, about)</option>
+            </select>
+          </label>
+
+          <label class="field-label">
+            <span>Online status visibility</span>
+            <select id="settings-online-visibility">
+              <option value="visible">Visible (friends can see when you are online)</option>
+              <option value="hidden">Hidden (always show you offline)</option>
+            </select>
+          </label>
+
+          <div class="settings-actions">
+            <button type="button" id="open-change-password-button" class="ghost-button">Change password</button>
+            <button type="button" id="settings-logout-button" class="ghost-button">Logout</button>
+            <button type="submit">Save profile</button>
+          </div>
+
+          <p id="settings-message" class="auth-message"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="change-password-modal">
+      <div class="modal-card change-password-card">
+        <div class="modal-header">
+          <h3>Change password</h3>
+          <button type="button" id="close-change-password-button" class="icon-button" aria-label="Close change password">✕</button>
+        </div>
+
+        <form id="change-password-form" class="stack settings-form">
+          <label class="field-label">
+            <span>Old password</span>
+            <input id="old-password" type="password" minlength="4" autocomplete="current-password" required />
+          </label>
+
+          <label class="field-label">
+            <span>New password</span>
+            <input id="new-password" type="password" minlength="4" autocomplete="new-password" required />
+          </label>
+
+          <div class="settings-actions settings-actions-end">
+            <button type="submit" id="change-password-button">Save password</button>
+          </div>
+
+          <p id="change-password-message" class="auth-message"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="friends-modal">
+      <div class="modal-card friends-card">
+        <div class="modal-header">
+          <h3>Friend Finder</h3>
+          <button type="button" id="close-friends-button" class="icon-button" aria-label="Close friends">✕</button>
+        </div>
+
+        <form id="friends-search-form" class="friends-search-row">
+          <input id="friends-search-input" type="text" maxlength="30" placeholder="Type a registered username" />
+          <button type="submit" id="friends-search-submit">Find</button>
+        </form>
+        <small class="friends-search-help">Start typing to see matching registered users.</small>
+
+        <p id="friends-message" class="auth-message"></p>
+
+        <div class="friends-section-block">
+          <strong>Your friends</strong>
+          <ul id="existing-friends-list" class="friends-results-list"></ul>
+        </div>
+
+        <div class="friends-section-block">
+          <strong>Matching users</strong>
+          <ul id="friends-results-list" class="friends-results-list"></ul>
+        </div>
+
+        <div class="friends-section-block">
+          <strong>Incoming requests</strong>
+          <ul id="incoming-requests-list" class="friends-results-list"></ul>
+        </div>
+
+        <div class="friends-section-block">
+          <strong>Sent requests</strong>
+          <ul id="outgoing-requests-list" class="friends-results-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="status-modal">
+      <div class="modal-card status-card">
+        <div class="modal-header">
+          <h3>Status</h3>
+          <button type="button" id="close-status-button" class="icon-button" aria-label="Close status">✕</button>
+        </div>
+
+        <div class="status-composer stack">
+          <label class="field-label">
+            <span>Write status</span>
+            <textarea id="status-text-input" class="status-text-input" maxlength="300" placeholder="What's on your mind?"></textarea>
+          </label>
+
+          <label class="field-label">
+            <span>Add photo/video</span>
+            <div class="status-media-picker">
+              <input id="status-media-input" class="status-media-input-hidden" type="file" accept="image/*,video/*" />
+              <label for="status-media-input" class="status-media-choose">
+                <span class="status-media-choose-icon" aria-hidden="true"></span>
+                <span class="status-media-choose-text">Choose image or video</span>
+              </label>
+              <small id="status-media-hint" class="status-media-selected">No media selected.</small>
+            </div>
+          </label>
+
+          <div class="status-actions">
+            <button type="button" id="status-post-text-button">Post text</button>
+            <button type="button" id="status-post-media-button">Post media</button>
+          </div>
+
+          <p id="status-message" class="auth-message"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="status-viewer-modal">
+      <div class="modal-card status-viewer-card">
+        <div class="modal-header">
+          <h3>Status</h3>
+          <button type="button" id="close-status-viewer-button" class="icon-button" aria-label="Close status viewer">✕</button>
+        </div>
+
+        <div class="status-viewer-head">
+          <div class="user-avatar" id="status-viewer-avatar">U</div>
+          <div>
+            <strong id="status-viewer-name">User</strong>
+            <small id="status-viewer-time" class="hidden"></small>
+          </div>
+        </div>
+
+        <div class="status-viewer-stage">
+          <button type="button" id="status-viewer-prev-button" class="status-viewer-nav-button" aria-label="Previous status">&#8249;</button>
+          <div id="status-viewer-list" class="status-viewer-list"></div>
+          <button type="button" id="status-viewer-next-button" class="status-viewer-nav-button" aria-label="Next status">&#8250;</button>
+        </div>
+        <small id="status-viewer-counter" class="status-viewer-counter">1 / 1</small>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="contact-profile-modal">
+      <div class="modal-card contact-profile-card">
+        <div class="modal-header">
+          <h3>Profile</h3>
+          <button type="button" id="close-contact-profile-button" class="icon-button" aria-label="Close profile">✕</button>
+        </div>
+
+        <div class="contact-profile-content">
+          <div class="contact-profile-avatar" id="contact-profile-avatar">?</div>
+          <strong id="contact-profile-name">Select chat</strong>
+          <small id="contact-profile-status">Offline</small>
+          <p id="contact-profile-about">No profile info</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="avatar-preview-modal">
+      <div class="modal-card avatar-preview-card">
+        <div class="modal-header">
+          <h3>Profile photo</h3>
+          <button type="button" id="close-avatar-preview-button" class="icon-button" aria-label="Close profile photo">✕</button>
+        </div>
+
+        <div class="avatar-preview-content">
+          <img id="avatar-preview-image" alt="Profile photo" />
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="media-preview-modal">
+      <div class="modal-card media-preview-card">
+        <div class="modal-header">
+          <h3>Media preview</h3>
+          <button type="button" id="close-media-preview-button" class="icon-button" aria-label="Close media preview">✕</button>
+        </div>
+
+        <div class="media-preview-content">
+          <img id="media-preview-thumbnail" alt="Media preview" />
+          <p id="media-preview-filename" class="media-preview-filename"></p>
+        </div>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="media-preview-cancel-button" class="ghost-button">Cancel</button>
+          <button type="button" id="media-preview-send-button">Send media</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="camera-capture-modal">
+      <div class="modal-card camera-capture-card">
+        <div class="modal-header">
+          <h3>Camera</h3>
+          <button type="button" id="close-camera-capture-button" class="icon-button" aria-label="Close camera">✕</button>
+        </div>
+
+        <div class="camera-capture-preview-wrap">
+          <video id="camera-capture-preview" playsinline autoplay muted></video>
+          <canvas id="camera-capture-canvas" width="1280" height="720" class="hidden" aria-hidden="true"></canvas>
+        </div>
+
+        <p id="camera-capture-status" class="camera-capture-status">Camera ready</p>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="camera-capture-cancel-button" class="ghost-button">Cancel</button>
+          <button type="button" id="camera-capture-switch-button" class="ghost-button">Switch camera</button>
+          <button type="button" id="camera-capture-photo-button">Take photo</button>
+          <button type="button" id="camera-capture-video-button">Start video</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="image-viewer-modal">
+      <div class="modal-card image-viewer-card">
+        <div class="modal-header">
+          <h3>Photo</h3>
+          <button type="button" id="close-image-viewer-button" class="icon-button" aria-label="Close photo viewer">✕</button>
+        </div>
+
+        <div class="image-viewer-content">
+          <img id="image-viewer-image" alt="Shared photo" />
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="avatar-crop-modal">
+      <div class="modal-card avatar-crop-card">
+        <div class="modal-header">
+          <h3>Crop profile photo</h3>
+          <button type="button" id="close-avatar-crop-button" class="icon-button" aria-label="Close crop photo">✕</button>
+        </div>
+
+        <div class="avatar-crop-content">
+          <canvas id="avatar-crop-canvas" width="320" height="320" aria-label="Avatar crop preview"></canvas>
+        </div>
+
+        <label class="field-label">
+          <span>Zoom</span>
+          <input id="avatar-crop-zoom" type="range" min="1" max="4" value="1" step="0.01" />
+        </label>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="avatar-crop-cancel-button" class="ghost-button">Cancel</button>
+          <button type="button" id="avatar-crop-apply-button">Use photo</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="photo-views-modal">
+      <div class="modal-card photo-views-card">
+        <div class="modal-header">
+          <h3>Your profile photo</h3>
+          <button type="button" id="close-photo-views-button" class="icon-button" aria-label="Close profile photo views">✕</button>
+        </div>
+
+        <div class="photo-views-top">
+          <div class="contact-profile-avatar" id="photo-views-avatar">U</div>
+          <div class="photo-views-meta">
+            <strong id="photo-views-title">Your profile photo</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="contact-style-modal">
+      <div class="modal-card contact-style-modal-card">
+        <div class="modal-header">
+          <h3>Edit nickname & color</h3>
+          <button type="button" id="close-contact-style-button" class="icon-button" aria-label="Close contact style">✕</button>
+        </div>
+
+        <form id="contact-style-form" class="stack contact-style-form">
+          <label class="field-label">
+            <span>Private nickname (only for you)</span>
+            <input id="contact-style-nickname" type="text" maxlength="30" placeholder="Leave empty to reset" />
+          </label>
+
+          <label class="field-label">
+            <span>Private chat color</span>
+            <input id="contact-style-color" type="text" maxlength="32" placeholder="pink or #22c55e" />
+          </label>
+
+          <div class="contact-style-preview-row">
+            <span>Preview</span>
+            <span id="contact-style-color-preview" class="contact-style-color-preview">Aa</span>
+          </div>
+
+          <small class="contact-style-help">Type a color name (pink, orange, green) or hex. Leave empty to reset.</small>
+          <p id="contact-style-message" class="auth-message"></p>
+
+          <div class="confirm-modal-actions">
+            <button type="button" id="contact-style-cancel-button" class="ghost-button">Cancel</button>
+            <button type="submit" id="contact-style-save-button">Save</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="confirm-modal">
+      <div class="modal-card confirm-modal-card">
+        <div class="modal-header">
+          <h3 id="confirm-modal-title">Please Confirm</h3>
+        </div>
+
+        <p id="confirm-modal-message" class="confirm-modal-message">Are you sure?</p>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="confirm-cancel-button" class="ghost-button">Cancel</button>
+          <button type="button" id="confirm-ok-button">Confirm</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="modal-backdrop hidden" id="forward-modal">
+      <div class="modal-card forward-modal-card">
+        <div class="modal-header">
+          <h3>Forward</h3>
+          <button type="button" id="close-forward-modal-button" class="icon-button" aria-label="Close forward message">✕</button>
+        </div>
+
+        <ul id="forward-friends-list" class="forward-friends-list"></ul>
+        <p id="forward-modal-error" class="auth-message"></p>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="forward-cancel-button" class="ghost-button">Cancel</button>
+          <button type="button" id="forward-send-button" disabled>Forward</button>
+        </div>
+      </div>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app-config.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

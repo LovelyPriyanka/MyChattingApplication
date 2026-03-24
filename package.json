@@ -1,0 +1,24 @@
+{
+  "name": "mychattingapplication",
+  "version": "1.0.0",
+  "description": "Simple real-time chat application with Express and Socket.IO",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node -e \"console.log('No tests yet')\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "mongodb": "^6.12.0",
+    "multer": "^2.1.1",
+    "nodemailer": "^6.10.1",
+    "socket.io": "^4.8.3"
+  }
+}

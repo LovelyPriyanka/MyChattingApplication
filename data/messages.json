@@ -1,0 +1,185 @@
+[
+  {
+    "messageId": "1773574097227-pr8254",
+    "fromUsername": "Tuttu",
+    "toUsername": "Priyanka",
+    "message": "Hii",
+    "sentAt": "4:58:12 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-15T11:28:12.453Z",
+    "seenAt": "2026-03-15T11:28:12.461Z"
+  },
+  {
+    "messageId": "1773574097331-aa3i2t",
+    "fromUsername": "Priyanka",
+    "toUsername": "Tuttu",
+    "message": "hiii",
+    "sentAt": "4:58:17 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-15T11:28:17.367Z",
+    "seenAt": "2026-03-15T11:28:20.420Z"
+  },
+  {
+    "messageId": "1773574099251-cqchru",
+    "fromUsername": "Priyanka",
+    "toUsername": "Tuttu",
+    "message": "hii",
+    "sentAt": "4:58:19 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-15T11:28:19.254Z",
+    "seenAt": "2026-03-15T11:28:20.426Z"
+  },
+  {
+    "messageId": "1773651461530-z8ci32",
+    "fromUsername": "Tuttu",
+    "toUsername": "Prema",
+    "message": "hii",
+    "sentAt": "2:27:41 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T08:57:41.656Z",
+    "seenAt": "2026-03-16T08:58:03.556Z"
+  },
+  {
+    "messageId": "1773651468258-ht4kgo",
+    "fromUsername": "Tuttu",
+    "toUsername": "Prema",
+    "message": "jhgduikdjn",
+    "sentAt": "2:27:48 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T08:57:48.261Z",
+    "seenAt": "2026-03-16T08:58:03.565Z"
+  },
+  {
+    "messageId": "1773651469606-wu24ro",
+    "fromUsername": "Tuttu",
+    "toUsername": "Prema",
+    "message": "mjsdhjsd",
+    "sentAt": "2:27:49 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T08:57:49.615Z",
+    "seenAt": "2026-03-16T08:58:03.573Z"
+  },
+  {
+    "messageId": "1773651493543-8re4id",
+    "fromUsername": "Prema",
+    "toUsername": "Tuttu",
+    "message": "Hhbh",
+    "sentAt": "2:28:07 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T08:58:07.242Z",
+    "seenAt": "2026-03-16T08:58:07.266Z"
+  },
+  {
+    "messageId": "1773651883000-m8cvid",
+    "fromUsername": "Sai reddy",
+    "toUsername": "Tuttu",
+    "message": "Hii",
+    "sentAt": "2:34:36 pm",
+    "seen": true,
+    "deletedFor": [
+      "Sai reddy"
+    ],
+    "createdAt": "2026-03-16T09:04:36.981Z",
+    "seenAt": "2026-03-16T09:04:36.990Z"
+  },
+  {
+    "messageId": "1773651878858-pizwan",
+    "fromUsername": "Tuttu",
+    "toUsername": "Sai reddy",
+    "message": "hii",
+    "sentAt": "2:34:38 pm",
+    "seen": true,
+    "deletedFor": [
+      "Sai reddy"
+    ],
+    "createdAt": "2026-03-16T09:04:38.866Z",
+    "seenAt": "2026-03-16T09:04:39.016Z"
+  },
+  {
+    "messageId": "1773651894880-538ui2",
+    "fromUsername": "Sai reddy",
+    "toUsername": "Tuttu",
+    "message": "Lvuuu",
+    "sentAt": "2:34:48 pm",
+    "seen": true,
+    "deletedFor": [
+      "Sai reddy"
+    ],
+    "createdAt": "2026-03-16T09:04:48.812Z",
+    "seenAt": "2026-03-16T09:05:01.526Z"
+  },
+  {
+    "messageId": "1773652215920-9k35xs",
+    "fromUsername": "Sai reddy",
+    "toUsername": "Tuttu",
+    "message": "Lvuuuu",
+    "sentAt": "2:40:09 pm",
+    "seen": true,
+    "deletedFor": [
+      "Sai reddy"
+    ],
+    "createdAt": "2026-03-16T09:10:09.853Z",
+    "seenAt": "2026-03-16T09:10:09.862Z"
+  },
+  {
+    "messageId": "1773652592535-o56547",
+    "fromUsername": "Tuttu",
+    "toUsername": "bhavya",
+    "message": "hi",
+    "sentAt": "2:46:32 pm",
+    "seen": false,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T09:16:32.550Z"
+  },
+  {
+    "messageId": "1773665699494-6u1bxl",
+    "fromUsername": "Priyanka",
+    "toUsername": "Sai reddy",
+    "message": "hi",
+    "sentAt": "6:24:59 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T12:54:59.849Z",
+    "seenAt": "2026-03-16T12:55:00.212Z"
+  },
+  {
+    "messageId": "1773665710486-uezwyt",
+    "fromUsername": "Sai reddy",
+    "toUsername": "Priyanka",
+    "message": "Hyy",
+    "sentAt": "6:25:04 pm",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-16T12:55:04.626Z",
+    "seenAt": "2026-03-16T12:55:04.636Z"
+  },
+  {
+    "messageId": "1773728051081-nvbw81",
+    "fromUsername": "Priyanka",
+    "toUsername": "Charan Reddy",
+    "message": "hi",
+    "sentAt": "11:44:11 am",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-17T06:14:11.289Z",
+    "seenAt": "2026-03-17T06:14:22.679Z"
+  },
+  {
+    "messageId": "1773728081945-bu4k40",
+    "fromUsername": "Charan Reddy",
+    "toUsername": "Priyanka",
+    "message": "hlo",
+    "sentAt": "11:44:35 am",
+    "seen": true,
+    "deletedFor": [],
+    "createdAt": "2026-03-17T06:14:35.144Z",
+    "seenAt": "2026-03-17T06:14:35.155Z"
+  }
+]

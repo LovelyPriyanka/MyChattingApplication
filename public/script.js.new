@@ -1,0 +1,514 @@
+const socket = io();
+
+const authCard = document.getElementById('auth-card');
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const messageForm = document.getElementById('message-form');
+const loginUsernameInput = document.getElementById('login-username');
+const loginPasswordInput = document.getElementById('login-password');
+const registerUsernameInput = document.getElementById('register-username');
+const registerPasswordInput = document.getElementById('register-password');
+const messageInput = document.getElementById('message-input');
+const messagesContainer = document.getElementById('messages');
+const chatSection = document.getElementById('chat-section');
+const roomTitle = document.getElementById('room-title');
+const statusText = document.getElementById('status-text');
+const usersList = document.getElementById('users-list');
+const showLoginButton = document.getElementById('show-login');
+const showRegisterButton = document.getElementById('show-register');
+const authMessage = document.getElementById('auth-message');
+const currentUsername = document.getElementById('current-username');
+const currentAbout = document.getElementById('current-about');
+const profileAvatar = document.getElementById('profile-avatar');
+const chatWithLabel = document.getElementById('chat-with-label');
+const chatHint = document.getElementById('chat-hint');
+const chatAvatar = document.getElementById('chat-avatar');
+const themeToggleButton = document.getElementById('theme-toggle-button');
+const settingsButton = document.getElementById('settings-button');
+const clearChatButton = document.getElementById('clear-chat-button');
+const chatHeaderActions = document.getElementById('chat-header-actions');
+const chatMenuButton = document.getElementById('chat-menu-button');
+const chatMenu = document.getElementById('chat-menu');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsButton = document.getElementById('close-settings-button');
+const settingsForm = document.getElementById('settings-form');
+const settingsUsernameInput = document.getElementById('settings-username');
+const settingsAboutInput = document.getElementById('settings-about');
+const settingsAvatarInput = document.getElementById('settings-avatar');
+const settingsLogoutButton = document.getElementById('settings-logout-button');
+
+const state = {
+  username: '',
+  selectedUser: null,
+  users: [],
+  conversations: {},
+  theme: localStorage.getItem('chat-theme') || 'light',
+  profile: JSON.parse(localStorage.getItem('chat-profile') || 'null') || {
+    about: 'Available to chat',
+    avatarUrl: ''
+  },
+  pendingAvatarDataUrl: ''
+};
+
+function getInitials(name) {
+  return String(name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || '?';
+}
+
+function setAvatar(element, name, avatarUrl = '') {
+  element.textContent = avatarUrl ? '' : getInitials(name);
+  element.style.backgroundImage = avatarUrl ? `url("${avatarUrl}")` : 'none';
+}
+
+function applyTheme() {
+  document.body.classList.toggle('dark-mode', state.theme === 'dark');
+  themeToggleButton.textContent = state.theme === 'dark' ? '🌙' : '☀️';
+}
+
+function applyProfile() {
+  currentAbout.textContent = state.profile.about || 'Available to chat';
+  setAvatar(profileAvatar, state.username || 'U', state.profile.avatarUrl || '');
+}
+
+function openSettingsModal() {
+  settingsUsernameInput.value = state.username;
+  settingsAboutInput.value = state.profile.about || '';
+  settingsAvatarInput.value = '';
+  settingsModal.classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+  settingsModal.classList.add('hidden');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getConversation(username) {
+  if (!state.conversations[username]) {
+    state.conversations[username] = [];
+  }
+
+  return state.conversations[username];
+}
+
+function addConversationMessage(username, messageData) {
+  getConversation(username).push({
+    id: messageData.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    deletedForMe: false,
+    seen: messageData.direction === 'incoming',
+    ...messageData
+  });
+}
+
+function deleteMessageForMe(username, messageId) {
+  const conversation = getConversation(username);
+  const entry = conversation.find((item) => item.id === messageId);
+
+  if (!entry) {
+    return;
+  }
+
+  entry.deletedForMe = true;
+  renderConversation();
+  renderUsers(state.users);
+}
+
+function renderConversation() {
+  messagesContainer.innerHTML = '';
+
+  if (!state.selectedUser) {
+    messagesContainer.innerHTML = '<div class="empty-chat">Select a person from the left to open that chat.</div>';
+    return;
+  }
+
+  const conversation = getConversation(state.selectedUser.username).filter((entry) => !entry.deletedForMe);
+
+  if (conversation.length === 0) {
+    messagesContainer.innerHTML = `<div class="empty-chat">No messages with ${escapeHtml(state.selectedUser.username)} yet.</div>`;
+    return;
+  }
+
+  conversation.forEach((entry) => {
+    const item = document.createElement('div');
+    item.className = `message ${entry.type} ${entry.direction || ''}`.trim();
+    const deliveryText = entry.direction === 'outgoing' ? (entry.seen ? 'Seen' : 'Sent') : 'Received';
+    item.innerHTML = `
+      <div class="message-meta-row">
+        <div class="message-meta">${escapeHtml(entry.label)} • ${escapeHtml(entry.sentAt)} • ${deliveryText}</div>
+        <button type="button" class="message-action-button" data-message-id="${escapeHtml(entry.id)}">⋮</button>
+      </div>
+      <div>${escapeHtml(entry.message)}</div>
+      <div class="message-actions hidden" data-actions-for="${escapeHtml(entry.id)}">
+        <button type="button" class="message-mini-button" data-delete-for-me="${escapeHtml(entry.id)}">Delete for me</button>
+      </div>
+    `;
+    messagesContainer.appendChild(item);
+  });
+
+  messagesContainer.querySelectorAll('[data-message-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const messageId = button.getAttribute('data-message-id');
+      const actionBox = messagesContainer.querySelector(`[data-actions-for="${messageId}"]`);
+      if (actionBox) {
+        actionBox.classList.toggle('hidden');
+      }
+    });
+  });
+
+  messagesContainer.querySelectorAll('[data-delete-for-me]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const messageId = button.getAttribute('data-delete-for-me');
+      deleteMessageForMe(state.selectedUser.username, messageId);
+    });
+  });
+
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function getLastPreview(username) {
+  const conversation = getConversation(username).filter((entry) => !entry.deletedForMe);
+  const lastMessage = conversation[conversation.length - 1];
+  return lastMessage ? lastMessage.message : 'No messages yet';
+}
+
+function showAuthMessage(message, isError = false) {
+  authMessage.textContent = message;
+  authMessage.dataset.state = isError ? 'error' : 'success';
+}
+
+function showLoginTab() {
+  loginForm.classList.remove('hidden');
+  registerForm.classList.add('hidden');
+  showLoginButton.classList.add('active');
+  showRegisterButton.classList.remove('active');
+}
+
+function showRegisterTab() {
+  registerForm.classList.remove('hidden');
+  loginForm.classList.add('hidden');
+  showRegisterButton.classList.add('active');
+  showLoginButton.classList.remove('active');
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.error || 'Something went wrong.');
+  }
+
+  return payload;
+}
+
+function performLogout() {
+  return postJson('/api/logout', {}).then(() => {
+    state.username = '';
+    state.selectedUser = null;
+    state.users = [];
+    state.conversations = {};
+    usersList.innerHTML = '';
+    messagesContainer.innerHTML = '';
+    chatSection.classList.add('hidden');
+    authCard.classList.remove('hidden');
+    chatHeaderActions.classList.add('hidden');
+    chatMenu.classList.add('hidden');
+    showLoginTab();
+    showAuthMessage('Logged out successfully.');
+    closeSettingsModal();
+  });
+}
+
+function enterChat(username) {
+  state.username = username;
+  currentUsername.textContent = username;
+  roomTitle.textContent = 'My Chats';
+  statusText.textContent = '';
+  applyProfile();
+  authCard.classList.add('hidden');
+  chatSection.classList.remove('hidden');
+  renderConversation();
+  socket.emit('register-user', { username });
+}
+
+function appendMessage(text, type = 'system') {
+  const item = document.createElement('div');
+  item.className = `message ${type}`;
+  item.textContent = text;
+  messagesContainer.appendChild(item);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function renderUsers(users) {
+  usersList.innerHTML = '';
+
+  const otherUsers = users.filter((user) => user.username !== state.username);
+  state.users = otherUsers;
+
+  if (otherUsers.length === 0) {
+    const item = document.createElement('li');
+    item.textContent = 'No one else is online yet';
+    usersList.appendChild(item);
+    return;
+  }
+
+  otherUsers.forEach((user) => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `user-select ${state.selectedUser?.socketId === user.socketId ? 'active' : ''}`;
+    button.innerHTML = `
+      <span class="user-name-row">
+        <span class="user-name">${escapeHtml(user.username)}</span>
+        <span class="user-status"></span>
+      </span>
+      <span class="user-preview">${escapeHtml(getLastPreview(user.username))}</span>
+    `;
+    button.addEventListener('click', () => {
+      state.selectedUser = user;
+      chatWithLabel.textContent = `Chat with ${user.username}`;
+      chatHint.textContent = `${user.username} is selected. Only this person will receive your message.`;
+      setAvatar(chatAvatar, user.username);
+      chatHeaderActions.classList.remove('hidden');
+      chatMenu.classList.add('hidden');
+      renderUsers(state.users);
+      renderConversation();
+      messageInput.focus();
+    });
+    item.appendChild(button);
+    usersList.appendChild(item);
+  });
+}
+
+showLoginButton.addEventListener('click', showLoginTab);
+showRegisterButton.addEventListener('click', showRegisterTab);
+themeToggleButton.addEventListener('click', () => {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('chat-theme', state.theme);
+  applyTheme();
+});
+
+settingsButton.addEventListener('click', openSettingsModal);
+closeSettingsButton.addEventListener('click', closeSettingsModal);
+chatMenuButton.addEventListener('click', () => {
+  chatMenu.classList.toggle('hidden');
+});
+
+settingsAvatarInput.addEventListener('change', () => {
+  const [file] = settingsAvatarInput.files || [];
+
+  if (!file) {
+    state.pendingAvatarDataUrl = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.pendingAvatarDataUrl = String(reader.result || '');
+  };
+  reader.readAsDataURL(file);
+});
+
+settingsForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  state.profile = {
+    about: settingsAboutInput.value.trim() || 'Available to chat',
+    avatarUrl: state.pendingAvatarDataUrl || state.profile.avatarUrl || ''
+  };
+  localStorage.setItem('chat-profile', JSON.stringify(state.profile));
+  currentUsername.textContent = settingsUsernameInput.value.trim() || state.username;
+  applyProfile();
+  state.pendingAvatarDataUrl = '';
+  closeSettingsModal();
+});
+
+settingsLogoutButton.addEventListener('click', () => {
+  performLogout();
+});
+
+clearChatButton.addEventListener('click', () => {
+  if (!state.selectedUser) {
+    return;
+  }
+
+  state.conversations[state.selectedUser.username] = [];
+  chatMenu.classList.add('hidden');
+  renderConversation();
+  renderUsers(state.users);
+});
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  try {
+    const result = await postJson('/api/login', {
+      username: loginUsernameInput.value.trim(),
+      password: loginPasswordInput.value
+    });
+
+    showAuthMessage('Login successful.');
+    enterChat(result.username);
+  } catch (error) {
+    showAuthMessage(error.message, true);
+  }
+});
+
+registerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  try {
+    const result = await postJson('/api/register', {
+      username: registerUsernameInput.value.trim(),
+      password: registerPasswordInput.value
+    });
+
+    showAuthMessage('Account created successfully.');
+    enterChat(result.username);
+  } catch (error) {
+    showAuthMessage(error.message, true);
+  }
+});
+
+messageForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+
+  const message = messageInput.value.trim();
+
+  if (!message) {
+    return;
+  }
+
+  if (!state.selectedUser) {
+    appendMessage('Pick a person from the online list before sending a message.');
+    return;
+  }
+
+  const sentAt = new Date().toLocaleTimeString();
+
+  addConversationMessage(state.selectedUser.username, {
+    type: 'chat',
+    direction: 'outgoing',
+    label: `You to ${state.selectedUser.username}`,
+    message,
+    sentAt
+  });
+
+  socket.emit('private-message', {
+    toSocketId: state.selectedUser.socketId,
+    message
+  });
+
+  renderConversation();
+  renderUsers(state.users);
+  messageInput.value = '';
+  messageInput.focus();
+});
+
+socket.on('private-message', ({ fromUsername, toUsername, message, sentAt }) => {
+  const otherPerson = fromUsername === state.username ? toUsername : fromUsername;
+  const isIncoming = fromUsername !== state.username;
+
+  if (isIncoming) {
+    addConversationMessage(otherPerson, {
+      type: 'chat',
+      direction: 'incoming',
+      label: `${fromUsername} to you`,
+      message,
+      sentAt
+    });
+  } else {
+    const conversation = getConversation(otherPerson);
+    const pendingMessage = [...conversation].reverse().find((entry) => entry.direction === 'outgoing' && !entry.seen);
+    if (pendingMessage) {
+      pendingMessage.seen = true;
+    }
+  }
+
+  renderUsers(state.users);
+
+  if (state.selectedUser?.username === otherPerson) {
+    renderConversation();
+  }
+});
+
+socket.on('system-message', (message) => {
+  if (!state.selectedUser && !state.users.length) {
+    messagesContainer.innerHTML = `<div class="message system">${escapeHtml(message)}</div>`;
+    return;
+  }
+
+  const item = document.createElement('div');
+  item.className = 'message system';
+  item.textContent = message;
+  messagesContainer.appendChild(item);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+});
+
+socket.on('users-list', (users) => {
+  if (state.selectedUser) {
+    const stillOnline = users.find((user) => user.socketId === state.selectedUser.socketId);
+
+    if (!stillOnline) {
+      state.selectedUser = null;
+      chatWithLabel.textContent = 'Choose a person';
+      chatHint.textContent = 'Your messages will go only to the selected person.';
+      chatAvatar.textContent = '?';
+      chatHeaderActions.classList.add('hidden');
+      chatMenu.classList.add('hidden');
+      statusText.textContent = '';
+      renderConversation();
+    }
+  }
+
+  renderUsers(users);
+});
+
+socket.on('username-error', (message) => {
+  appendMessage(message);
+  chatSection.classList.add('hidden');
+  authCard.classList.remove('hidden');
+  showAuthMessage(message, true);
+  showLoginTab();
+  loginUsernameInput.focus();
+});
+
+socket.on('connect', () => {
+  statusText.textContent = '';
+});
+
+socket.on('disconnect', () => {
+  statusText.textContent = '';
+  appendMessage('You were disconnected from the server.');
+});
+
+window.addEventListener('load', async () => {
+  applyTheme();
+  try {
+    const response = await fetch('/api/session');
+    const session = await response.json();
+
+    if (session.authenticated && session.username) {
+      enterChat(session.username);
+    }
+  } catch (_error) {
+    showAuthMessage('Unable to restore session.', true);
+  }
+});
