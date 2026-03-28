@@ -18,11 +18,12 @@ const server = http.createServer(app);
 function parseAllowedOrigins(value) {
   return String(value || '')
     .split(',')
-    .map((item) => item.trim())
+    .map((item) => item.trim().replace(/\/$/, ''))
     .filter(Boolean);
 }
 
 const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN);
+const allowAnyOrigin = allowedOrigins.includes('*');
 const hasCrossOriginClients = allowedOrigins.length > 0;
 const sessionCookieSameSite = process.env.SESSION_COOKIE_SAME_SITE || (hasCrossOriginClients ? 'none' : 'lax');
 const sessionCookieSecure =
@@ -36,7 +37,9 @@ const corsOptions = {
       return;
     }
 
-    if (!hasCrossOriginClients || allowedOrigins.includes(origin)) {
+    const normalizedOrigin = String(origin).trim().replace(/\/$/, '');
+
+    if (!hasCrossOriginClients || allowAnyOrigin || allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
       return;
     }
@@ -1291,10 +1294,12 @@ function getProfileFromUser(user) {
 }
 
 app.use(express.json({ limit: '10mb' }));
-app.use(cors(corsOptions));
-if (String(process.env.TRUST_PROXY || '').toLowerCase() === 'true') {
+
+// Always trust proxy in production for secure cookies
+if (process.env.NODE_ENV === 'production' || String(process.env.TRUST_PROXY || '').toLowerCase() === 'true') {
   app.set('trust proxy', 1);
 }
+app.use(cors(corsOptions));
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
 
