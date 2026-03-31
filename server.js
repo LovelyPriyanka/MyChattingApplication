@@ -25,25 +25,22 @@ function parseAllowedOrigins(value) {
 const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN);
 const allowAnyOrigin = allowedOrigins.includes('*');
 const hasCrossOriginClients = allowedOrigins.length > 0;
-const sessionCookieSameSite = process.env.SESSION_COOKIE_SAME_SITE || (hasCrossOriginClients ? 'none' : 'lax');
-const sessionCookieSecure =
-  String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true' || hasCrossOriginClients;
+const sessionCookieSameSite = 'none';
+const sessionCookieSecure = true;
 
 const corsOptions = {
   credentials: true,
   origin(origin, callback) {
-    if (!origin) {
+    // Allow only the specified frontend origin
+    const allowed = [
+      'https://mychattingapplication.onrender.com',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    if (!origin || allowed.includes(origin)) {
       callback(null, true);
       return;
     }
-
-    const normalizedOrigin = String(origin).trim().replace(/\/$/, '');
-
-    if (!hasCrossOriginClients || allowAnyOrigin || allowedOrigins.includes(normalizedOrigin)) {
-      callback(null, true);
-      return;
-    }
-
     callback(new Error('Not allowed by CORS'));
   }
 };
@@ -1294,12 +1291,10 @@ function getProfileFromUser(user) {
 }
 
 app.use(express.json({ limit: '10mb' }));
-
-// Always trust proxy in production for secure cookies
-if (process.env.NODE_ENV === 'production' || String(process.env.TRUST_PROXY || '').toLowerCase() === 'true') {
+app.use(cors(corsOptions));
+if (String(process.env.TRUST_PROXY || '').toLowerCase() === 'true') {
   app.set('trust proxy', 1);
 }
-app.use(cors(corsOptions));
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
 
