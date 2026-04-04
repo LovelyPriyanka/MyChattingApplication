@@ -1052,9 +1052,7 @@ async function sendRegistrationOtpEmail(email, username, otpCode) {
     throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
   }
 
-  const transporter = createSmtpTransporter(smtp);
-
-  await transporter.sendMail({
+  await sendMailWithFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Your OTP code - My Secure Chat',
@@ -1076,9 +1074,7 @@ async function sendPasswordResetOtpEmail(email, username, otpCode) {
     throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
   }
 
-  const transporter = createSmtpTransporter(smtp);
-
-  await transporter.sendMail({
+  await sendMailWithFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Password reset OTP - My Secure Chat',
@@ -1100,9 +1096,7 @@ async function sendPasswordResetSuccessEmail(email, username) {
     return;
   }
 
-  const transporter = createSmtpTransporter(smtp);
-
-  await transporter.sendMail({
+  await sendMailWithFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Password reset successful - My Secure Chat',
@@ -1124,9 +1118,7 @@ async function sendRegistrationSuccessEmail(email, username) {
     return;
   }
 
-  const transporter = createSmtpTransporter(smtp);
-
-  await transporter.sendMail({
+  await sendMailWithFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Registration successful - My Secure Chat',
@@ -1223,6 +1215,57 @@ function createSmtpTransporter(smtp) {
       dns.lookup(hostname, { family: 4, all: false }, callback);
     }
   });
+}
+
+async function sendMailWithFallback(smtp, mailOptions) {
+  const attempts = [
+    {
+      smtp,
+      label: `${smtp.host}:${smtp.port} secure=${smtp.secure ? 'true' : 'false'}`
+    }
+  ];
+
+  const isGmail = String(smtp.host || '').toLowerCase().includes('gmail');
+
+  // Gmail can work on STARTTLS 587 or SSL 465 depending on provider/network path.
+  if (isGmail) {
+    if (smtp.port !== 465 || smtp.secure !== true) {
+      attempts.push({
+        smtp: {
+          ...smtp,
+          port: 465,
+          secure: true
+        },
+        label: `${smtp.host}:465 secure=true`
+      });
+    }
+
+    if (smtp.port !== 587 || smtp.secure !== false) {
+      attempts.push({
+        smtp: {
+          ...smtp,
+          port: 587,
+          secure: false
+        },
+        label: `${smtp.host}:587 secure=false`
+      });
+    }
+  }
+
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    try {
+      const transporter = createSmtpTransporter(attempt.smtp);
+      await transporter.sendMail(mailOptions);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn(`SMTP attempt failed (${attempt.label}): ${formatEmailSendError(error)}`);
+    }
+  }
+
+  throw lastError || new Error('Unable to send email.');
 }
 
 function sanitizeAvatarUrl(value) {
