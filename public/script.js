@@ -4370,8 +4370,30 @@ async function parseResponseAsJson(response) {
   return payload;
 }
 
+const API_REQUEST_TIMEOUT_MS = 20000;
+
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function postJson(url, body) {
-  const response = await fetch(`${apiBaseUrl}${url}`, {
+  const response = await fetchWithTimeout(`${apiBaseUrl}${url}`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -4384,14 +4406,14 @@ async function postJson(url, body) {
 }
 
 async function getJson(url) {
-  const response = await fetch(`${apiBaseUrl}${url}`, {
+  const response = await fetchWithTimeout(`${apiBaseUrl}${url}`, {
     credentials: 'include'
   });
   return parseResponseAsJson(response);
 }
 
 async function deleteJson(url) {
-  const response = await fetch(`${apiBaseUrl}${url}`, {
+  const response = await fetchWithTimeout(`${apiBaseUrl}${url}`, {
     method: 'DELETE'
     ,credentials: 'include'
   });

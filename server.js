@@ -1055,7 +1055,10 @@ async function sendRegistrationOtpEmail(email, username, otpCode) {
     port: smtp.port,
     secure: smtp.secure,
     auth: smtp.auth,
-    tls: smtp.tls
+    tls: smtp.tls,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000
   });
 
   await transporter.sendMail({
@@ -1085,7 +1088,10 @@ async function sendPasswordResetOtpEmail(email, username, otpCode) {
     port: smtp.port,
     secure: smtp.secure,
     auth: smtp.auth,
-    tls: smtp.tls
+    tls: smtp.tls,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000
   });
 
   await transporter.sendMail({
@@ -1115,7 +1121,10 @@ async function sendPasswordResetSuccessEmail(email, username) {
     port: smtp.port,
     secure: smtp.secure,
     auth: smtp.auth,
-    tls: smtp.tls
+    tls: smtp.tls,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000
   });
 
   await transporter.sendMail({
@@ -1145,7 +1154,10 @@ async function sendRegistrationSuccessEmail(email, username) {
     port: smtp.port,
     secure: smtp.secure,
     auth: smtp.auth,
-    tls: smtp.tls
+    tls: smtp.tls,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000
   });
 
   await transporter.sendMail({
