@@ -1133,20 +1133,23 @@ async function sendRegistrationSuccessEmail(email, username) {
   });
 }
 
-function getSmtpConfig() {
-  const readSmtpEnv = (value) => String(value || '').trim().replace(/^['\"]|['\"]$/g, '').trim();
-  const host = readSmtpEnv(process.env.SMTP_HOST);
-  const port = Number.parseInt(readSmtpEnv(process.env.SMTP_PORT) || '587', 10);
-  const user = readSmtpEnv(process.env.SMTP_USER);
-  const rawPass = readSmtpEnv(process.env.SMTP_PASS);
+function readSmtpEnv(value) {
+  return String(value || '').trim().replace(/^['\"]|['\"]$/g, '').trim();
+}
+
+function getSmtpConfigByPrefix(prefix) {
+  const host = readSmtpEnv(process.env[`${prefix}_HOST`]);
+  const port = Number.parseInt(readSmtpEnv(process.env[`${prefix}_PORT`]) || '587', 10);
+  const user = readSmtpEnv(process.env[`${prefix}_USER`]);
+  const rawPass = readSmtpEnv(process.env[`${prefix}_PASS`]);
   const pass = host.toLowerCase().includes('gmail') ? rawPass.replace(/\s+/g, '') : rawPass;
-  const fromAddress = readSmtpEnv(process.env.SMTP_FROM) || user;
-  const fromName = readSmtpEnv(process.env.SMTP_FROM_NAME) || 'My Secure Chat';
+  const fromAddress = readSmtpEnv(process.env[`${prefix}_FROM`]) || user;
+  const fromName = readSmtpEnv(process.env[`${prefix}_FROM_NAME`]) || readSmtpEnv(process.env.SMTP_FROM_NAME) || 'My Secure Chat';
   const from = fromAddress.includes('<') && fromAddress.includes('>')
     ? fromAddress
     : `"${fromName.replace(/\"/g, '')}" <${fromAddress}>`;
-  const secure = parseEnvBoolean(process.env.SMTP_SECURE, false);
-  const tlsRejectUnauthorized = parseEnvBoolean(process.env.SMTP_TLS_REJECT_UNAUTHORIZED, true);
+  const secure = parseEnvBoolean(process.env[`${prefix}_SECURE`], false);
+  const tlsRejectUnauthorized = parseEnvBoolean(process.env[`${prefix}_TLS_REJECT_UNAUTHORIZED`], true);
   const usesPlaceholderCredentials =
     isSameEmail(user, 'your-email@gmail.com') ||
     pass.toLowerCase() === 'your-app-password' ||
@@ -1166,6 +1169,14 @@ function getSmtpConfig() {
       rejectUnauthorized: tlsRejectUnauthorized
     }
   };
+}
+
+function getSmtpConfig() {
+  return getSmtpConfigByPrefix('SMTP');
+}
+
+function getBackupSmtpConfig() {
+  return getSmtpConfigByPrefix('SMTP_BACKUP');
 }
 
 function formatEmailSendError(error) {
@@ -1250,6 +1261,14 @@ async function sendMailWithFallback(smtp, mailOptions) {
         label: `${smtp.host}:587 secure=false`
       });
     }
+  }
+
+  const backupSmtp = getBackupSmtpConfig();
+  if (backupSmtp) {
+    attempts.push({
+      smtp: backupSmtp,
+      label: `backup ${backupSmtp.host}:${backupSmtp.port} secure=${backupSmtp.secure ? 'true' : 'false'}`
+    });
   }
 
   let lastError = null;
