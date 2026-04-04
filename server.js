@@ -25,22 +25,25 @@ function parseAllowedOrigins(value) {
 const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN);
 const allowAnyOrigin = allowedOrigins.includes('*');
 const hasCrossOriginClients = allowedOrigins.length > 0;
-const sessionCookieSameSite = 'none';
-const sessionCookieSecure = true;
+const sessionCookieSameSite = process.env.SESSION_COOKIE_SAME_SITE || (hasCrossOriginClients ? 'none' : 'lax');
+const sessionCookieSecure =
+  String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true' || hasCrossOriginClients;
 
 const corsOptions = {
   credentials: true,
   origin(origin, callback) {
-    // Allow only the specified frontend origin
-    const allowed = [
-      'https://mychattingapplication.onrender.com',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000'
-    ];
-    if (!origin || allowed.includes(origin)) {
+    if (!origin) {
       callback(null, true);
       return;
     }
+
+    const normalizedOrigin = String(origin).trim().replace(/\/$/, '');
+
+    if (!hasCrossOriginClients || allowAnyOrigin || allowedOrigins.includes(normalizedOrigin)) {
+      callback(null, true);
+      return;
+    }
+
     callback(new Error('Not allowed by CORS'));
   }
 };
@@ -1047,15 +1050,7 @@ async function sendRegistrationOtpEmail(email, username, otpCode) {
     throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls
-  });
-
-  await transporter.sendMail({
+  await sendEmailWithSmtpFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Your OTP code - My Secure Chat',
@@ -1077,15 +1072,7 @@ async function sendPasswordResetOtpEmail(email, username, otpCode) {
     throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls
-  });
-
-  await transporter.sendMail({
+  await sendEmailWithSmtpFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Password reset OTP - My Secure Chat',
@@ -1107,15 +1094,7 @@ async function sendPasswordResetSuccessEmail(email, username) {
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls
-  });
-
-  await transporter.sendMail({
+  await sendEmailWithSmtpFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Password reset successful - My Secure Chat',
@@ -1137,15 +1116,7 @@ async function sendRegistrationSuccessEmail(email, username) {
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls
-  });
-
-  await transporter.sendMail({
+  await sendEmailWithSmtpFallback(smtp, {
     from: smtp.from,
     to: email,
     subject: 'Registration successful - My Secure Chat',
@@ -1158,6 +1129,83 @@ async function sendRegistrationSuccessEmail(email, username) {
       'If you did not request this, ignore this email.'
     ].join('\n')
   });
+}
+
+function getSmtpTransportOptions(smtp, override = {}) {
+  const forceIpv4 = parseEnvBoolean(process.env.SMTP_FORCE_IPV4, true);
+  const connectionTimeout = Number.parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS || '15000', 10);
+  const greetingTimeout = Number.parseInt(process.env.SMTP_GREETING_TIMEOUT_MS || '10000', 10);
+  const socketTimeout = Number.parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS || '20000', 10);
+
+  return {
+    host: smtp.host,
+    port: Number.isFinite(override.port) ? override.port : smtp.port,
+    secure: typeof override.secure === 'boolean' ? override.secure : smtp.secure,
+    auth: smtp.auth,
+    tls: smtp.tls,
+    connectionTimeout: Number.isFinite(connectionTimeout) && connectionTimeout > 0 ? connectionTimeout : 15000,
+    greetingTimeout: Number.isFinite(greetingTimeout) && greetingTimeout > 0 ? greetingTimeout : 10000,
+    socketTimeout: Number.isFinite(socketTimeout) && socketTimeout > 0 ? socketTimeout : 20000,
+    family: forceIpv4 ? 4 : undefined
+  };
+}
+
+function isRetryableSmtpNetworkError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const lower = String(error?.message || '').toLowerCase();
+  return (
+    code === 'ETIMEDOUT' ||
+    code === 'ESOCKET' ||
+    code === 'ECONNRESET' ||
+    code === 'ECONNREFUSED' ||
+    code === 'EHOSTUNREACH' ||
+    code === 'ENETUNREACH' ||
+    lower.includes('connection timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('greeting never received') ||
+    lower.includes('connection closed unexpectedly')
+  );
+}
+
+function getSmtpFallbackAttempts(smtp) {
+  const attempts = [{ port: smtp.port, secure: smtp.secure }];
+  const host = String(smtp.host || '').toLowerCase();
+  const isCommon587Provider =
+    host.includes('gmail') ||
+    host.includes('office365') ||
+    host.includes('outlook') ||
+    host.includes('hotmail') ||
+    host.includes('yahoo');
+
+  if (isCommon587Provider && smtp.port === 587 && !smtp.secure) {
+    attempts.push({ port: 465, secure: true });
+  }
+
+  if (isCommon587Provider && smtp.port === 465 && smtp.secure) {
+    attempts.push({ port: 587, secure: false });
+  }
+
+  return attempts;
+}
+
+async function sendEmailWithSmtpFallback(smtp, mailOptions) {
+  const attempts = getSmtpFallbackAttempts(smtp);
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    const transporter = nodemailer.createTransport(getSmtpTransportOptions(smtp, attempt));
+    try {
+      await transporter.sendMail(mailOptions);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableSmtpNetworkError(error)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error('Unable to send email due to SMTP connection issue.');
 }
 
 function getSmtpConfig() {
@@ -1205,6 +1253,16 @@ function formatEmailSendError(error) {
 
   if (lower.includes('self-signed certificate')) {
     return 'SMTP certificate issue: self-signed certificate in chain. For local testing only, set SMTP_TLS_REJECT_UNAUTHORIZED=false in .env and restart the server.';
+  }
+
+  if (
+    authCode === 'ETIMEDOUT' ||
+    authCode === 'ESOCKET' ||
+    lower.includes('connection timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('greeting never received')
+  ) {
+    return 'SMTP connection timed out. This usually means your hosting provider blocks outbound SMTP ports (587/465) or the SMTP host/port is unreachable. Try SMTP_PORT=465 with SMTP_SECURE=true, or use an email API provider (Resend/SendGrid/Mailgun) that works over HTTPS.';
   }
 
   if (

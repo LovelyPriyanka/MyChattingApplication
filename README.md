@@ -90,6 +90,11 @@ Provider notes:
 - Gmail: use `smtp.gmail.com`, port `587`, and a Google App Password (not your normal Gmail password).
 - Outlook/Hotmail: use `smtp.office365.com`, port `587`, and your mailbox/app password.
 - If you get `self-signed certificate in certificate chain`, set `SMTP_TLS_REJECT_UNAUTHORIZED=false` for local testing and restart the server.
+- If deployment logs show `Connection timeout`, your host may block SMTP port 587. Try:
+	- `SMTP_PORT=465`
+	- `SMTP_SECURE=true`
+	- `SMTP_FORCE_IPV4=true`
+	- Optional timeout tuning: `SMTP_CONNECTION_TIMEOUT_MS=15000`, `SMTP_GREETING_TIMEOUT_MS=10000`, `SMTP_SOCKET_TIMEOUT_MS=20000`
 
 ## Next security upgrades to add
 
