@@ -4371,10 +4371,11 @@ async function parseResponseAsJson(response) {
 }
 
 const API_REQUEST_TIMEOUT_MS = 20000;
+const OTP_REQUEST_TIMEOUT_MS = 75000;
 
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = API_REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url, {
@@ -4392,7 +4393,7 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, timeoutMs = API_REQUEST_TIMEOUT_MS) {
   const response = await fetchWithTimeout(`${apiBaseUrl}${url}`, {
     method: 'POST',
     credentials: 'include',
@@ -4400,7 +4401,7 @@ async function postJson(url, body) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(body)
-  });
+  }, timeoutMs);
 
   return parseResponseAsJson(response);
 }
@@ -4519,7 +4520,7 @@ function changePasswordOnServer(oldPassword, newPassword) {
 function requestPasswordResetOtpOnServer(email) {
   return postJson('/api/password-reset/request-otp', {
     email
-  });
+  }, OTP_REQUEST_TIMEOUT_MS);
 }
 
 function verifyPasswordResetOtpOnServer(email, otp) {
@@ -6104,7 +6105,7 @@ registerForm.addEventListener('submit', async (event) => {
   setRegisterBusy(true, 'Sending OTP...');
 
   try {
-    const result = await postJson('/api/register/request-otp', registerPayload);
+    const result = await postJson('/api/register/request-otp', registerPayload, OTP_REQUEST_TIMEOUT_MS);
     if (!result || result.ok !== true) {
       throw new Error(result?.error || 'Unable to start registration. Please try again.');
     }
@@ -6178,7 +6179,7 @@ resendOtpButton.addEventListener('click', async () => {
       email: registerEmailInput.value.trim(),
       username: registerUsernameInput.value.trim(),
       password: registerPasswordInput.value
-    });
+    }, OTP_REQUEST_TIMEOUT_MS);
     if (!result || result.ok !== true) {
       throw new Error(result?.error || 'Unable to resend OTP. Please try again.');
     }
