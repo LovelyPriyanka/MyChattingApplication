@@ -1228,6 +1228,62 @@ function createSmtpTransporter(smtp) {
   });
 }
 
+function parseEmailAddress(value) {
+  const raw = String(value || '').trim();
+  const bracketMatch = raw.match(/<([^>]+)>/);
+  return String(bracketMatch?.[1] || raw).trim();
+}
+
+function parseEmailDisplayName(value) {
+  const raw = String(value || '').trim();
+  const bracketIndex = raw.indexOf('<');
+
+  if (bracketIndex <= 0) {
+    return '';
+  }
+
+  return raw.slice(0, bracketIndex).replace(/^\"|\"$/g, '').trim();
+}
+
+async function sendMailUsingBrevoApi(mailOptions) {
+  const brevoApiKey = readSmtpEnv(process.env.BREVO_API_KEY);
+  if (!brevoApiKey) {
+    throw new Error('Brevo API key is not configured. Set BREVO_API_KEY for HTTPS mail fallback.');
+  }
+
+  const fromEmail = parseEmailAddress(mailOptions?.from);
+  const fromName = parseEmailDisplayName(mailOptions?.from);
+  const toEmail = parseEmailAddress(mailOptions?.to);
+
+  const payload = {
+    sender: {
+      email: fromEmail
+    },
+    to: [{ email: toEmail }],
+    subject: String(mailOptions?.subject || '').slice(0, 200),
+    textContent: String(mailOptions?.text || '')
+  };
+
+  if (fromName) {
+    payload.sender.name = fromName;
+  }
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': brevoApiKey
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`Brevo API send failed (${response.status}): ${responseText || 'Unknown response'}`);
+  }
+}
+
 async function sendMailWithFallback(smtp, mailOptions) {
   const attempts = [
     {
@@ -1281,6 +1337,17 @@ async function sendMailWithFallback(smtp, mailOptions) {
     } catch (error) {
       lastError = error;
       console.warn(`SMTP attempt failed (${attempt.label}): ${formatEmailSendError(error)}`);
+    }
+  }
+
+  const brevoApiKey = readSmtpEnv(process.env.BREVO_API_KEY);
+  if (brevoApiKey) {
+    try {
+      await sendMailUsingBrevoApi(mailOptions);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn(`Brevo API fallback failed: ${formatEmailSendError(error)}`);
     }
   }
 
