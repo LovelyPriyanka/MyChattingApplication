@@ -4340,10 +4340,12 @@ function showRegisterTab() {
 async function parseResponseAsJson(response) {
   const responseText = await response.text();
   let payload = {};
+  let parseFailed = false;
 
   try {
     payload = responseText ? JSON.parse(responseText) : {};
   } catch (_error) {
+    parseFailed = true;
     const trimmed = responseText.trim();
     const looksLikeHtml = trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
 
@@ -4355,6 +4357,10 @@ async function parseResponseAsJson(response) {
             ? 'Server returned HTML instead of JSON. Open the app using your backend URL and try again.'
             : `Server returned an invalid response (status ${response.status}).`
     };
+  }
+
+  if (parseFailed) {
+    throw new Error(payload.error || 'Server returned an invalid response.');
   }
 
   if (!response.ok) {
@@ -6077,6 +6083,10 @@ registerForm.addEventListener('submit', async (event) => {
 
   try {
     const result = await postJson('/api/register/request-otp', registerPayload);
+    if (!result || result.ok !== true) {
+      throw new Error(result?.error || 'Unable to start registration. Please try again.');
+    }
+
     state.registerOtpPending = true;
     registerOtpSection.classList.remove('hidden');
     registerOtpInput.required = true;
@@ -6147,6 +6157,10 @@ resendOtpButton.addEventListener('click', async () => {
       username: registerUsernameInput.value.trim(),
       password: registerPasswordInput.value
     });
+    if (!result || result.ok !== true) {
+      throw new Error(result?.error || 'Unable to resend OTP. Please try again.');
+    }
+
     if (result.devOtp) {
       showAuthMessage(`${result.message || 'New OTP generated for development.'} Use OTP: ${result.devOtp}`);
     } else {

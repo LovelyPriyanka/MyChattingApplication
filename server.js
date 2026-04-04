@@ -1044,7 +1044,22 @@ function generateOtpCode() {
 }
 
 async function sendRegistrationOtpEmail(email, username, otpCode) {
-  await sendEmailUsingConfiguredProvider({
+  const smtp = getSmtpConfig();
+
+  if (!smtp) {
+    throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.auth,
+    tls: smtp.tls
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
     to: email,
     subject: 'Your OTP code - My Secure Chat',
     text: [
@@ -1054,13 +1069,27 @@ async function sendRegistrationOtpEmail(email, username, otpCode) {
       '',
       'This code will expire in 5 minutes.',
       'If you did not request this, ignore this email.'
-    ].join('\n'),
-    required: true
+    ].join('\n')
   });
 }
 
 async function sendPasswordResetOtpEmail(email, username, otpCode) {
-  await sendEmailUsingConfiguredProvider({
+  const smtp = getSmtpConfig();
+
+  if (!smtp) {
+    throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.auth,
+    tls: smtp.tls
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
     to: email,
     subject: 'Password reset OTP - My Secure Chat',
     text: [
@@ -1070,13 +1099,27 @@ async function sendPasswordResetOtpEmail(email, username, otpCode) {
       '',
       'This code will expire in 5 minutes.',
       'If you did not request this, ignore this email.'
-    ].join('\n'),
-    required: true
+    ].join('\n')
   });
 }
 
 async function sendPasswordResetSuccessEmail(email, username) {
-  await sendEmailUsingConfiguredProvider({
+  const smtp = getSmtpConfig();
+
+  if (!smtp) {
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.auth,
+    tls: smtp.tls
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
     to: email,
     subject: 'Password reset successful - My Secure Chat',
     text: [
@@ -1086,13 +1129,27 @@ async function sendPasswordResetSuccessEmail(email, username) {
       'If you did not perform this action, change your password immediately and contact support.',
       '',
       'For security, your active sessions were signed out.'
-    ].join('\n'),
-    required: false
+    ].join('\n')
   });
 }
 
 async function sendRegistrationSuccessEmail(email, username) {
-  await sendEmailUsingConfiguredProvider({
+  const smtp = getSmtpConfig();
+
+  if (!smtp) {
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.auth,
+    tls: smtp.tls
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
     to: email,
     subject: 'Registration successful - My Secure Chat',
     text: [
@@ -1102,161 +1159,8 @@ async function sendRegistrationSuccessEmail(email, username) {
       'Your account is now active.',
       '',
       'If you did not request this, ignore this email.'
-    ].join('\n'),
-    required: false
+    ].join('\n')
   });
-}
-
-function getResendConfig() {
-  const readValue = (value) => String(value || '').trim().replace(/^['\"]|['\"]$/g, '').trim();
-  const apiKey = readValue(process.env.RESEND_API_KEY);
-  const from = readValue(process.env.RESEND_FROM || process.env.SMTP_FROM);
-
-  if (!apiKey || !from) {
-    return null;
-  }
-
-  return { apiKey, from };
-}
-
-async function sendEmailViaResend(resendConfig, mailOptions) {
-  if (typeof fetch !== 'function') {
-    const error = new Error('Resend API is not available because global fetch is missing. Upgrade Node.js runtime to v18+ or use SMTP settings.');
-    error.code = 'ERESENDFETCH';
-    throw error;
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendConfig.apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: resendConfig.from,
-      to: [mailOptions.to],
-      subject: mailOptions.subject,
-      text: mailOptions.text
-    })
-  });
-
-  if (!response.ok) {
-    const rawText = await response.text();
-    let errorMessage = rawText;
-
-    try {
-      const parsed = JSON.parse(rawText || '{}');
-      errorMessage = parsed?.error?.message || parsed?.message || rawText;
-    } catch (_error) {
-      // Keep raw response text when JSON parse fails.
-    }
-
-    const resendError = new Error(`Resend API failed (${response.status}): ${String(errorMessage || 'Unknown error').slice(0, 400)}`);
-    resendError.code = 'ERESEND';
-    resendError.responseCode = response.status;
-    throw resendError;
-  }
-}
-
-async function sendEmailUsingConfiguredProvider({ to, subject, text, required }) {
-  const resendConfig = getResendConfig();
-  const smtp = getSmtpConfig();
-
-  if (resendConfig) {
-    await sendEmailViaResend(resendConfig, { to, subject, text });
-    return;
-  }
-
-  if (smtp) {
-    await sendEmailWithSmtpFallback(smtp, {
-      from: smtp.from,
-      to,
-      subject,
-      text
-    });
-    return;
-  }
-
-  if (required) {
-    throw new Error('Email service is not configured. Set RESEND_API_KEY + RESEND_FROM, or set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM.');
-  }
-}
-
-function getSmtpTransportOptions(smtp, override = {}) {
-  const forceIpv4 = parseEnvBoolean(process.env.SMTP_FORCE_IPV4, true);
-  const connectionTimeout = Number.parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS || '15000', 10);
-  const greetingTimeout = Number.parseInt(process.env.SMTP_GREETING_TIMEOUT_MS || '10000', 10);
-  const socketTimeout = Number.parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS || '20000', 10);
-
-  return {
-    host: smtp.host,
-    port: Number.isFinite(override.port) ? override.port : smtp.port,
-    secure: typeof override.secure === 'boolean' ? override.secure : smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls,
-    connectionTimeout: Number.isFinite(connectionTimeout) && connectionTimeout > 0 ? connectionTimeout : 15000,
-    greetingTimeout: Number.isFinite(greetingTimeout) && greetingTimeout > 0 ? greetingTimeout : 10000,
-    socketTimeout: Number.isFinite(socketTimeout) && socketTimeout > 0 ? socketTimeout : 20000,
-    family: forceIpv4 ? 4 : undefined
-  };
-}
-
-function isRetryableSmtpNetworkError(error) {
-  const code = String(error?.code || '').toUpperCase();
-  const lower = String(error?.message || '').toLowerCase();
-  return (
-    code === 'ETIMEDOUT' ||
-    code === 'ESOCKET' ||
-    code === 'ECONNRESET' ||
-    code === 'ECONNREFUSED' ||
-    code === 'EHOSTUNREACH' ||
-    code === 'ENETUNREACH' ||
-    lower.includes('connection timeout') ||
-    lower.includes('timed out') ||
-    lower.includes('greeting never received') ||
-    lower.includes('connection closed unexpectedly')
-  );
-}
-
-function getSmtpFallbackAttempts(smtp) {
-  const attempts = [{ port: smtp.port, secure: smtp.secure }];
-  const host = String(smtp.host || '').toLowerCase();
-  const isCommon587Provider =
-    host.includes('gmail') ||
-    host.includes('office365') ||
-    host.includes('outlook') ||
-    host.includes('hotmail') ||
-    host.includes('yahoo');
-
-  if (isCommon587Provider && smtp.port === 587 && !smtp.secure) {
-    attempts.push({ port: 465, secure: true });
-  }
-
-  if (isCommon587Provider && smtp.port === 465 && smtp.secure) {
-    attempts.push({ port: 587, secure: false });
-  }
-
-  return attempts;
-}
-
-async function sendEmailWithSmtpFallback(smtp, mailOptions) {
-  const attempts = getSmtpFallbackAttempts(smtp);
-  let lastError = null;
-
-  for (const attempt of attempts) {
-    const transporter = nodemailer.createTransport(getSmtpTransportOptions(smtp, attempt));
-    try {
-      await transporter.sendMail(mailOptions);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (!isRetryableSmtpNetworkError(error)) {
-        break;
-      }
-    }
-  }
-
-  throw lastError || new Error('Unable to send email due to SMTP connection issue.');
 }
 
 function getSmtpConfig() {
@@ -1304,20 +1208,6 @@ function formatEmailSendError(error) {
 
   if (lower.includes('self-signed certificate')) {
     return 'SMTP certificate issue: self-signed certificate in chain. For local testing only, set SMTP_TLS_REJECT_UNAUTHORIZED=false in .env and restart the server.';
-  }
-
-  if (authCode === 'ERESEND' || authCode === 'ERESENDFETCH' || lower.includes('resend api failed')) {
-    return message || 'Email API error. Check RESEND_API_KEY and RESEND_FROM values, and ensure RESEND_FROM is a verified sender/domain in Resend.';
-  }
-
-  if (
-    authCode === 'ETIMEDOUT' ||
-    authCode === 'ESOCKET' ||
-    lower.includes('connection timeout') ||
-    lower.includes('timed out') ||
-    lower.includes('greeting never received')
-  ) {
-    return 'SMTP connection timed out. This usually means your hosting provider blocks outbound SMTP ports (587/465) or the SMTP host/port is unreachable. Try SMTP_PORT=465 with SMTP_SECURE=true, or use an email API provider (Resend/SendGrid/Mailgun) that works over HTTPS.';
   }
 
   if (
@@ -2913,6 +2803,16 @@ app.use((error, _req, res, next) => {
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'API route not found.' });
+});
+
+app.get('/app-config.js', (_req, res) => {
+  const runtimeServerUrl = String(process.env.PUBLIC_SERVER_URL || process.env.SERVER_URL || '')
+    .trim()
+    .replace(/\/$/, '');
+
+  res.type('application/javascript');
+  res.set('Cache-Control', 'no-store');
+  res.send(`window.__CHAT_CONFIG__ = { SERVER_URL: ${JSON.stringify(runtimeServerUrl)} };`);
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

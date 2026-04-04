@@ -44,14 +44,16 @@ If users are not on the same network, your backend must be reachable from the in
 	- `SESSION_COOKIE_SECURE=true`
 	- `SESSION_COOKIE_SAME_SITE=none`
 	- `TRUST_PROXY=true` (recommended behind reverse proxy/load balancer)
-3. If your frontend is a separate website, open `public/app-config.js` and set:
-	- `SERVER_URL: 'https://your-backend-domain.com'`
-4. Start the backend and open the frontend URL from any network.
+3. Set one of these backend environment variables:
+	- `PUBLIC_SERVER_URL=https://your-backend-domain.com` (recommended)
+	- or `SERVER_URL=https://your-backend-domain.com` (fallback)
+4. Restart backend after changing env values.
+5. Start the backend and open the frontend URL from any network.
 
 Notes:
 
 - For cross-domain login/session to work, HTTPS is required.
-- If frontend and backend are same domain, keep `SERVER_URL` empty.
+- If frontend and backend are same domain, keep `PUBLIC_SERVER_URL` (or `SERVER_URL`) empty.
 - Localhost is only for local testing, not internet users.
 
 ## Real email OTP + MongoDB setup
@@ -65,13 +67,6 @@ Set these environment variables before starting the server:
 - `SMTP_USER` (your SMTP login email/user)
 - `SMTP_PASS` (your SMTP app password/token)
 - `SMTP_FROM` (sender address shown in verification email)
-
-If your host blocks SMTP ports, use Resend over HTTPS instead:
-
-- `RESEND_API_KEY` (Resend API key)
-- `RESEND_FROM` (verified sender/domain in Resend, for example `onboarding@resend.dev` while testing)
-
-When `RESEND_API_KEY` and `RESEND_FROM` are set, the app sends OTP emails using Resend API first.
 
 Also set MongoDB variables:
 
@@ -97,15 +92,10 @@ Provider notes:
 - Gmail: use `smtp.gmail.com`, port `587`, and a Google App Password (not your normal Gmail password).
 - Outlook/Hotmail: use `smtp.office365.com`, port `587`, and your mailbox/app password.
 - If you get `self-signed certificate in certificate chain`, set `SMTP_TLS_REJECT_UNAUTHORIZED=false` for local testing and restart the server.
-- If deployment logs show `Connection timeout`, your host may block SMTP port 587. Try:
-	- `SMTP_PORT=465`
-	- `SMTP_SECURE=true`
-	- `SMTP_FORCE_IPV4=true`
-	- Optional timeout tuning: `SMTP_CONNECTION_TIMEOUT_MS=15000`, `SMTP_GREETING_TIMEOUT_MS=10000`, `SMTP_SOCKET_TIMEOUT_MS=20000`
-- If SMTP still times out after that, set `RESEND_API_KEY` and `RESEND_FROM` to send OTP over HTTPS (no SMTP port dependency).
 
 ## Next security upgrades to add
 
 - HTTPS in production
 - Profile photos and last seen
 - Rate limiting and spam protection
+
