@@ -66,6 +66,13 @@ Set these environment variables before starting the server:
 - `SMTP_PASS` (your SMTP app password/token)
 - `SMTP_FROM` (sender address shown in verification email)
 
+If your host blocks SMTP ports, use Resend over HTTPS instead:
+
+- `RESEND_API_KEY` (Resend API key)
+- `RESEND_FROM` (verified sender/domain in Resend, for example `onboarding@resend.dev` while testing)
+
+When `RESEND_API_KEY` and `RESEND_FROM` are set, the app sends OTP emails using Resend API first.
+
 Also set MongoDB variables:
 
 - `MONGODB_URI` (MongoDB Atlas/local connection string)
@@ -95,6 +102,7 @@ Provider notes:
 	- `SMTP_SECURE=true`
 	- `SMTP_FORCE_IPV4=true`
 	- Optional timeout tuning: `SMTP_CONNECTION_TIMEOUT_MS=15000`, `SMTP_GREETING_TIMEOUT_MS=10000`, `SMTP_SOCKET_TIMEOUT_MS=20000`
+- If SMTP still times out after that, set `RESEND_API_KEY` and `RESEND_FROM` to send OTP over HTTPS (no SMTP port dependency).
 
 ## Next security upgrades to add
 

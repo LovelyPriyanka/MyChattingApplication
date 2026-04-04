@@ -1044,14 +1044,7 @@ function generateOtpCode() {
 }
 
 async function sendRegistrationOtpEmail(email, username, otpCode) {
-  const smtp = getSmtpConfig();
-
-  if (!smtp) {
-    throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
-  }
-
-  await sendEmailWithSmtpFallback(smtp, {
-    from: smtp.from,
+  await sendEmailUsingConfiguredProvider({
     to: email,
     subject: 'Your OTP code - My Secure Chat',
     text: [
@@ -1061,19 +1054,13 @@ async function sendRegistrationOtpEmail(email, username, otpCode) {
       '',
       'This code will expire in 5 minutes.',
       'If you did not request this, ignore this email.'
-    ].join('\n')
+    ].join('\n'),
+    required: true
   });
 }
 
 async function sendPasswordResetOtpEmail(email, username, otpCode) {
-  const smtp = getSmtpConfig();
-
-  if (!smtp) {
-    throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
-  }
-
-  await sendEmailWithSmtpFallback(smtp, {
-    from: smtp.from,
+  await sendEmailUsingConfiguredProvider({
     to: email,
     subject: 'Password reset OTP - My Secure Chat',
     text: [
@@ -1083,19 +1070,13 @@ async function sendPasswordResetOtpEmail(email, username, otpCode) {
       '',
       'This code will expire in 5 minutes.',
       'If you did not request this, ignore this email.'
-    ].join('\n')
+    ].join('\n'),
+    required: true
   });
 }
 
 async function sendPasswordResetSuccessEmail(email, username) {
-  const smtp = getSmtpConfig();
-
-  if (!smtp) {
-    return;
-  }
-
-  await sendEmailWithSmtpFallback(smtp, {
-    from: smtp.from,
+  await sendEmailUsingConfiguredProvider({
     to: email,
     subject: 'Password reset successful - My Secure Chat',
     text: [
@@ -1105,19 +1086,13 @@ async function sendPasswordResetSuccessEmail(email, username) {
       'If you did not perform this action, change your password immediately and contact support.',
       '',
       'For security, your active sessions were signed out.'
-    ].join('\n')
+    ].join('\n'),
+    required: false
   });
 }
 
 async function sendRegistrationSuccessEmail(email, username) {
-  const smtp = getSmtpConfig();
-
-  if (!smtp) {
-    return;
-  }
-
-  await sendEmailWithSmtpFallback(smtp, {
-    from: smtp.from,
+  await sendEmailUsingConfiguredProvider({
     to: email,
     subject: 'Registration successful - My Secure Chat',
     text: [
@@ -1127,8 +1102,84 @@ async function sendRegistrationSuccessEmail(email, username) {
       'Your account is now active.',
       '',
       'If you did not request this, ignore this email.'
-    ].join('\n')
+    ].join('\n'),
+    required: false
   });
+}
+
+function getResendConfig() {
+  const readValue = (value) => String(value || '').trim().replace(/^['\"]|['\"]$/g, '').trim();
+  const apiKey = readValue(process.env.RESEND_API_KEY);
+  const from = readValue(process.env.RESEND_FROM || process.env.SMTP_FROM);
+
+  if (!apiKey || !from) {
+    return null;
+  }
+
+  return { apiKey, from };
+}
+
+async function sendEmailViaResend(resendConfig, mailOptions) {
+  if (typeof fetch !== 'function') {
+    const error = new Error('Resend API is not available because global fetch is missing. Upgrade Node.js runtime to v18+ or use SMTP settings.');
+    error.code = 'ERESENDFETCH';
+    throw error;
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${resendConfig.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: resendConfig.from,
+      to: [mailOptions.to],
+      subject: mailOptions.subject,
+      text: mailOptions.text
+    })
+  });
+
+  if (!response.ok) {
+    const rawText = await response.text();
+    let errorMessage = rawText;
+
+    try {
+      const parsed = JSON.parse(rawText || '{}');
+      errorMessage = parsed?.error?.message || parsed?.message || rawText;
+    } catch (_error) {
+      // Keep raw response text when JSON parse fails.
+    }
+
+    const resendError = new Error(`Resend API failed (${response.status}): ${String(errorMessage || 'Unknown error').slice(0, 400)}`);
+    resendError.code = 'ERESEND';
+    resendError.responseCode = response.status;
+    throw resendError;
+  }
+}
+
+async function sendEmailUsingConfiguredProvider({ to, subject, text, required }) {
+  const resendConfig = getResendConfig();
+  const smtp = getSmtpConfig();
+
+  if (resendConfig) {
+    await sendEmailViaResend(resendConfig, { to, subject, text });
+    return;
+  }
+
+  if (smtp) {
+    await sendEmailWithSmtpFallback(smtp, {
+      from: smtp.from,
+      to,
+      subject,
+      text
+    });
+    return;
+  }
+
+  if (required) {
+    throw new Error('Email service is not configured. Set RESEND_API_KEY + RESEND_FROM, or set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM.');
+  }
 }
 
 function getSmtpTransportOptions(smtp, override = {}) {
@@ -1253,6 +1304,10 @@ function formatEmailSendError(error) {
 
   if (lower.includes('self-signed certificate')) {
     return 'SMTP certificate issue: self-signed certificate in chain. For local testing only, set SMTP_TLS_REJECT_UNAUTHORIZED=false in .env and restart the server.';
+  }
+
+  if (authCode === 'ERESEND' || authCode === 'ERESENDFETCH' || lower.includes('resend api failed')) {
+    return message || 'Email API error. Check RESEND_API_KEY and RESEND_FROM values, and ensure RESEND_FROM is a verified sender/domain in Resend.';
   }
 
   if (
