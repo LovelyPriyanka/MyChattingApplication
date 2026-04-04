@@ -2,7 +2,8 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
-require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
+const dotenvOverride = String(process.env.DOTENV_OVERRIDE || '').trim().toLowerCase() === 'true';
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: dotenvOverride });
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
@@ -1218,6 +1219,10 @@ function formatEmailSendError(error) {
   const smtpCode = Number(error?.responseCode || 0);
   const authCode = String(error?.code || '').toUpperCase();
 
+  if (lower.includes('connection timeout') || authCode === 'ETIMEDOUT') {
+    return 'SMTP connection timeout. Check SMTP_HOST/SMTP_PORT and hosting provider egress rules. If SMTP is blocked, use a transactional mail provider or enable temporary OTP fallback.';
+  }
+
   if (lower.includes('self-signed certificate')) {
     return 'SMTP certificate issue: self-signed certificate in chain. For local testing only, set SMTP_TLS_REJECT_UNAUTHORIZED=false in .env and restart the server.';
   }
@@ -1431,6 +1436,21 @@ app.post('/api/register/request-otp', async (req, res) => {
     try {
       await sendRegistrationOtpEmail(email, username, otpCode);
     } catch (error) {
+      const allowOtpFallback = parseEnvBoolean(process.env.ALLOW_OTP_IN_RESPONSE_ON_EMAIL_FAILURE, false);
+      if (allowOtpFallback) {
+        console.warn(
+          `OTP email failed for ${email}; returning temporary fallback OTP because ALLOW_OTP_IN_RESPONSE_ON_EMAIL_FAILURE=true. ${formatEmailSendError(error)}`
+        );
+
+        return res.json({
+          ok: true,
+          email,
+          devOtp: otpCode,
+          message:
+            'Email delivery is currently unavailable. Temporary fallback OTP is returned in response. Enter it within 5 minutes to create your account.'
+        });
+      }
+
       pendingRegistrations.delete(email);
       console.warn(`OTP email failed for ${email}: ${formatEmailSendError(error)}`);
       return res.status(500).json({ error: formatEmailSendError(error) || 'Unable to send OTP email.' });
@@ -1637,6 +1657,21 @@ app.post('/api/password-reset/request-otp', async (req, res) => {
     try {
       await sendPasswordResetOtpEmail(email, user.username, otpCode);
     } catch (error) {
+      const allowOtpFallback = parseEnvBoolean(process.env.ALLOW_OTP_IN_RESPONSE_ON_EMAIL_FAILURE, false);
+      if (allowOtpFallback) {
+        console.warn(
+          `Password reset OTP email failed for ${email}; returning temporary fallback OTP because ALLOW_OTP_IN_RESPONSE_ON_EMAIL_FAILURE=true. ${formatEmailSendError(error)}`
+        );
+
+        return res.json({
+          ok: true,
+          email,
+          devOtp: otpCode,
+          message:
+            'Email delivery is currently unavailable. Temporary fallback OTP is returned in response. Enter it within 5 minutes to continue password reset.'
+        });
+      }
+
       pendingPasswordResets.delete(email);
       console.warn(`Password reset OTP email failed for ${email}: ${formatEmailSendError(error)}`);
       return res.status(500).json({ error: formatEmailSendError(error) || 'Unable to send OTP email.' });
