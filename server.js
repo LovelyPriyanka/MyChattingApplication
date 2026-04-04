@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
+const dns = require('dns');
 const dotenvOverride = String(process.env.DOTENV_OVERRIDE || '').trim().toLowerCase() === 'true';
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: dotenvOverride });
 const express = require('express');
@@ -1051,16 +1052,7 @@ async function sendRegistrationOtpEmail(email, username, otpCode) {
     throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls,
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000
-  });
+  const transporter = createSmtpTransporter(smtp);
 
   await transporter.sendMail({
     from: smtp.from,
@@ -1084,16 +1076,7 @@ async function sendPasswordResetOtpEmail(email, username, otpCode) {
     throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM with real values (not example placeholders).');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls,
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000
-  });
+  const transporter = createSmtpTransporter(smtp);
 
   await transporter.sendMail({
     from: smtp.from,
@@ -1117,16 +1100,7 @@ async function sendPasswordResetSuccessEmail(email, username) {
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls,
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000
-  });
+  const transporter = createSmtpTransporter(smtp);
 
   await transporter.sendMail({
     from: smtp.from,
@@ -1150,16 +1124,7 @@ async function sendRegistrationSuccessEmail(email, username) {
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure,
-    auth: smtp.auth,
-    tls: smtp.tls,
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000
-  });
+  const transporter = createSmtpTransporter(smtp);
 
   await transporter.sendMail({
     from: smtp.from,
@@ -1242,6 +1207,22 @@ function formatEmailSendError(error) {
   }
 
   return message || 'Unable to send registration email.';
+}
+
+function createSmtpTransporter(smtp) {
+  return nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.auth,
+    tls: smtp.tls,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    lookup(hostname, _options, callback) {
+      dns.lookup(hostname, { family: 4, all: false }, callback);
+    }
+  });
 }
 
 function sanitizeAvatarUrl(value) {
