@@ -882,6 +882,15 @@ function closeAvatarPreviewModal() {
   avatarPreviewImage.removeAttribute('src');
 }
 
+function formatClockTime(value = Date.now()) {
+  const timestamp = new Date(value).getTime();
+  const safeDate = Number.isFinite(timestamp) ? new Date(timestamp) : new Date();
+  return safeDate.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
 function resolveMediaUrl(url) {
   const raw = String(url || '').trim();
   if (!raw) {
@@ -897,6 +906,29 @@ function resolveMediaUrl(url) {
   }
 
   return `${apiBaseUrl}/${raw}`;
+}
+
+function attachMediaUnavailableFallback(mediaElement, fallbackText) {
+  if (!mediaElement) {
+    return;
+  }
+
+  mediaElement.addEventListener(
+    'error',
+    () => {
+      const mediaWrap = mediaElement.closest('.message-media-wrap') || mediaElement.closest('.status-item');
+      if (mediaWrap) {
+        mediaWrap.style.display = 'none';
+      }
+
+      const messageRoot = mediaElement.closest('.message');
+      const messageBody = messageRoot?.querySelector('.message-body');
+      if (messageBody && fallbackText) {
+        messageBody.textContent = fallbackText;
+      }
+    },
+    { once: true }
+  );
 }
 
 function openImageViewerModal(imageUrl) {
@@ -1209,6 +1241,7 @@ async function startCameraCaptureStream(preferredFacingMode = 'user') {
   cameraCaptureStream = result.stream;
   cameraFacingMode = result.facingMode;
   cameraCapturePreview.srcObject = result.stream;
+  cameraCapturePreview.classList.toggle('front-camera-unmirrored', cameraFacingMode === 'user');
   setCameraCaptureStatus(`${getCameraFacingLabel(cameraFacingMode)} camera ready`);
   updateCameraSwitchButtonLabel();
 }
@@ -1247,6 +1280,9 @@ function stopCameraCaptureStream() {
   }
 
   cameraCaptureStream = null;
+  if (cameraCapturePreview) {
+    cameraCapturePreview.classList.remove('front-camera-unmirrored');
+  }
 }
 
 async function queueCapturedMediaFile(file) {
@@ -1346,7 +1382,15 @@ async function capturePhotoFromCamera() {
     return;
   }
 
-  context.drawImage(cameraCapturePreview, 0, 0, width, height);
+  if (cameraFacingMode === 'user') {
+    context.save();
+    context.translate(width, 0);
+    context.scale(-1, 1);
+    context.drawImage(cameraCapturePreview, 0, 0, width, height);
+    context.restore();
+  } else {
+    context.drawImage(cameraCapturePreview, 0, 0, width, height);
+  }
 
   const photoBlob = await new Promise((resolve) => {
     cameraCaptureCanvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.9);
@@ -2088,7 +2132,7 @@ function sendVoiceMessage({ audioUrl, audioMimeType, durationMs, mood = 'neutral
 
   const contact = state.contacts[state.selectedUsername] || {};
   const messageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sentAt = new Date().toLocaleTimeString();
+  const sentAt = formatClockTime();
   const replyTo = state.replyDraft
     ? {
         messageId: state.replyDraft.messageId,
@@ -2294,7 +2338,7 @@ function sendGalleryMessage({ mediaUrl, mediaType, mediaMimeType, mood = 'neutra
 
   const contact = state.contacts[state.selectedUsername] || {};
   const messageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sentAt = new Date().toLocaleTimeString();
+  const sentAt = formatClockTime();
   const replyTo = state.replyDraft
     ? {
         messageId: state.replyDraft.messageId,
@@ -2633,7 +2677,7 @@ async function handleForwardMessage(entry) {
 
   const contact = state.contacts[targetUsername] || {};
   const messageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sentAt = new Date().toLocaleTimeString();
+  const sentAt = formatClockTime();
   const forwardedMessage = hasAudio || hasMedia ? '' : `Forwarded: ${entry.message}`;
   const forwardedMood = sanitizeMood(entry.mood);
 
@@ -2775,6 +2819,7 @@ function renderConversation() {
 
     const item = document.createElement('div');
     item.className = `message ${entry.type} ${entry.direction || ''}`.trim();
+    const messageClockTime = formatClockTime(messageCreatedAt);
     const messageMood = sanitizeMood(entry.mood);
     if (entry.type === 'chat' && ['happy', 'sad', 'angry'].includes(messageMood)) {
       item.classList.add(`mood-${messageMood}`);
@@ -2862,7 +2907,7 @@ function renderConversation() {
       : `<div class="message-body message-body-audio">${hasAudioMessage ? 'Voice message' : mediaType === 'video' ? 'Video' : 'Photo'}</div>`;
 
     item.innerHTML = `
-      <div class="message-meta">${escapeHtml(entry.sentAt)} ${tickHtml}</div>
+      <div class="message-meta">${escapeHtml(messageClockTime)} ${tickHtml}</div>
       ${forwardHtml}
       ${replyHtml}
       ${mediaHtml}
@@ -2900,9 +2945,15 @@ function renderConversation() {
 
     const imageElement = item.querySelector('.message-media-image');
     if (imageElement) {
+      attachMediaUnavailableFallback(imageElement, 'Photo is unavailable.');
       imageElement.addEventListener('click', () => {
         openImageViewerModal(entry.mediaUrl);
       });
+    }
+
+    const videoElement = item.querySelector('.message-media-video');
+    if (videoElement) {
+      attachMediaUnavailableFallback(videoElement, 'Video is unavailable.');
     }
 
     item.querySelectorAll('[data-message-reaction]').forEach((reactionButton) => {
@@ -4032,9 +4083,15 @@ function renderStatusFeed() {
 
     const imageElement = listItem.querySelector('img.status-media');
     if (imageElement) {
+      attachMediaUnavailableFallback(imageElement, 'Status photo is unavailable.');
       imageElement.addEventListener('click', () => {
         openImageViewerModal(status.mediaUrl || '');
       });
+    }
+
+    const videoElement = listItem.querySelector('video.status-media');
+    if (videoElement) {
+      attachMediaUnavailableFallback(videoElement, 'Status video is unavailable.');
     }
 
     const deleteButton = listItem.querySelector('[data-status-action="delete"]');
@@ -4609,6 +4666,8 @@ function applyLoggedOutUi(message) {
 
 function mapServerMessageToConversationEntry(message) {
   const isOutgoing = message.fromUsername === state.username;
+  const resolvedCreatedAt = resolveMessageCreatedAt(message.createdAt, message.messageId);
+  const sentAt = String(message.sentAt || '').trim() || formatClockTime(resolvedCreatedAt);
 
   return {
     id: message.messageId,
@@ -4624,8 +4683,8 @@ function mapServerMessageToConversationEntry(message) {
     mood: sanitizeMood(message.mood),
     replyTo: message.replyTo || null,
     reactions: normalizeMessageReactions(message.reactions),
-    sentAt: message.sentAt,
-    createdAt: resolveMessageCreatedAt(message.createdAt, message.messageId),
+    sentAt,
+    createdAt: resolvedCreatedAt,
     seen: isOutgoing ? Boolean(message.seen) : false,
     ackSent: isOutgoing ? true : Boolean(message.seen)
   };
@@ -6282,7 +6341,7 @@ messageForm.addEventListener('submit', (event) => {
   const contact = state.contacts[state.selectedUsername] || {};
 
   const messageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sentAt = new Date().toLocaleTimeString();
+  const sentAt = formatClockTime();
   const messageMood = detectMoodFromText(message);
   const replyTo = state.replyDraft
     ? {

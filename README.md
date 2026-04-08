@@ -72,8 +72,15 @@ Also set MongoDB variables:
 
 - `MONGODB_URI` (MongoDB Atlas/local connection string)
 - `MONGODB_DB_NAME` (example: `mychattingapplication`)
+- `MESSAGE_ENCRYPTION_KEY` (optional but recommended, used to encrypt message text at rest in MongoDB)
 
 Without SMTP and MongoDB, OTP registration will not work.
+
+Message encryption notes:
+
+- If `MESSAGE_ENCRYPTION_KEY` is set, message text is encrypted before storing in MongoDB and decrypted when reading.
+- Use a 32-byte key as either 64-char hex or base64.
+- Keep the same key across deployments, otherwise previously encrypted messages cannot be decrypted.
 
 Mongo migration behavior:
 

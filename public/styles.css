@@ -2088,6 +2088,10 @@ body.dark-mode .message-forward-snippet .forward-label {
   background: #0b1116;
 }
 
+#camera-capture-preview.front-camera-unmirrored {
+  transform: scaleX(-1);
+}
+
 .camera-capture-status {
   margin: 0 0 12px;
   color: var(--muted);

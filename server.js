@@ -11,7 +11,8 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
-const { MongoClient } = require('mongodb');
+const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
+const { pipeline } = require('stream/promises');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -77,6 +78,10 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_VERIFIED_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_BCRYPT_ROUNDS = 8;
 const MESSAGE_HASH_PREFIX = 'sha256:';
+const MESSAGE_ENCRYPTION_PREFIX = 'enc:v1';
+const MESSAGE_ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+const MESSAGE_ENCRYPTION_IV_BYTES = 12;
+const MESSAGE_ENCRYPTION_TAG_BYTES = 16;
 const mediaUploadsDir = path.join(__dirname, 'public', 'uploads');
 let mongoClientPromise = null;
 let mongoCollectionsPromise = null;
@@ -87,6 +92,10 @@ let messagesWriteQueue = Promise.resolve();
 let cacheRefreshInFlight = null;
 let lastCacheRefreshAt = 0;
 const CACHE_REFRESH_TTL_MS = 1500;
+const chatTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit'
+});
 const sessionMiddleware = session({
   secret: 'simple-chat-secret-key',
   resave: false,
@@ -98,6 +107,34 @@ const sessionMiddleware = session({
     maxAge: 1000 * 60 * 60 * 24
   }
 });
+
+function parseMessageEncryptionKey() {
+  const rawKey = String(process.env.MESSAGE_ENCRYPTION_KEY || '')
+    .trim()
+    .replace(/^['\"]|['\"]$/g, '');
+
+  if (!rawKey) {
+    return null;
+  }
+
+  if (/^[a-fA-F0-9]{64}$/.test(rawKey)) {
+    return Buffer.from(rawKey, 'hex');
+  }
+
+  try {
+    const base64Buffer = Buffer.from(rawKey, 'base64');
+    if (base64Buffer.length === 32) {
+      return base64Buffer;
+    }
+  } catch (_error) {
+    // Ignore parse errors and continue to invalid-key warning.
+  }
+
+  console.warn('MESSAGE_ENCRYPTION_KEY is invalid. Use 32-byte base64 or 64-char hex. Message encryption is disabled.');
+  return null;
+}
+
+const messageEncryptionKey = parseMessageEncryptionKey();
 
 function ensureJsonFile(filePath, defaultValue) {
   const dirPath = path.dirname(filePath);
@@ -419,7 +456,7 @@ function readMessages() {
 
 function writeMessages(messages) {
   messagesCache = (Array.isArray(messages) ? messages : []).map(normalizeStoredMessage);
-  const snapshot = cloneJson(messagesCache);
+  const snapshot = cloneJson(messagesCache).map(serializeMessageForStorage);
 
   messagesWriteQueue = messagesWriteQueue
     .then(async () => {
@@ -574,6 +611,105 @@ function hashMessageText(value) {
   return `${MESSAGE_HASH_PREFIX}${digest}`;
 }
 
+function isEncryptedMessageText(value) {
+  const raw = String(value || '').trim();
+  if (!raw.startsWith(`${MESSAGE_ENCRYPTION_PREFIX}:`)) {
+    return false;
+  }
+
+  const parts = raw.split(':');
+  return parts.length === 5 && parts[0] === 'enc' && parts[1] === 'v1';
+}
+
+function encryptMessageText(value) {
+  const plainText = sanitizeText(value);
+  if (!plainText) {
+    return '';
+  }
+
+  if (isEncryptedMessageText(plainText)) {
+    return plainText;
+  }
+
+  if (!messageEncryptionKey) {
+    return plainText;
+  }
+
+  const iv = crypto.randomBytes(MESSAGE_ENCRYPTION_IV_BYTES);
+  const cipher = crypto.createCipheriv(MESSAGE_ENCRYPTION_ALGORITHM, messageEncryptionKey, iv);
+  const encrypted = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return `${MESSAGE_ENCRYPTION_PREFIX}:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
+}
+
+function decryptMessageText(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  if (!isEncryptedMessageText(raw)) {
+    return sanitizeText(raw);
+  }
+
+  if (!messageEncryptionKey) {
+    console.warn('Found encrypted message payload but MESSAGE_ENCRYPTION_KEY is not set. Returning empty text for safety.');
+    return '';
+  }
+
+  const parts = raw.split(':');
+  const iv = Buffer.from(parts[2] || '', 'base64');
+  const authTag = Buffer.from(parts[3] || '', 'base64');
+  const encryptedPayload = Buffer.from(parts[4] || '', 'base64');
+
+  if (iv.length !== MESSAGE_ENCRYPTION_IV_BYTES || authTag.length !== MESSAGE_ENCRYPTION_TAG_BYTES || !encryptedPayload.length) {
+    return '';
+  }
+
+  try {
+    const decipher = crypto.createDecipheriv(MESSAGE_ENCRYPTION_ALGORITHM, messageEncryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(encryptedPayload), decipher.final()]).toString('utf8');
+    return sanitizeText(decrypted);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function serializeMessageForStorage(message) {
+  const normalized = normalizeStoredMessage(message);
+  const serialized = {
+    ...normalized,
+    message: encryptMessageText(normalized.message)
+  };
+
+  if (serialized.replyTo && typeof serialized.replyTo === 'object') {
+    serialized.replyTo = {
+      ...serialized.replyTo,
+      message: encryptMessageText(serialized.replyTo.message)
+    };
+  }
+
+  return serialized;
+}
+
+function hydrateMessageFromStorage(message) {
+  const hydrated = {
+    ...message,
+    message: decryptMessageText(message?.message)
+  };
+
+  if (hydrated.replyTo && typeof hydrated.replyTo === 'object') {
+    hydrated.replyTo = {
+      ...hydrated.replyTo,
+      message: decryptMessageText(hydrated.replyTo.message)
+    };
+  }
+
+  return normalizeStoredMessage(hydrated);
+}
+
 function sanitizeReplyPayload(value, fallbackFromUsername = '') {
   if (!value || typeof value !== 'object') {
     return null;
@@ -645,6 +781,10 @@ function sanitizeMediaDataUrl(value) {
   }
 
   if (raw.startsWith('/uploads/')) {
+    return raw.slice(0, 220);
+  }
+
+  if (raw.startsWith('/api/media/')) {
     return raw.slice(0, 220);
   }
 
@@ -721,16 +861,7 @@ function sanitizeStatusRecord(value) {
     return null;
   }
 
-  const expiresAtRaw = String(value.expiresAt || '').trim();
-  const expiresAt = expiresAtRaw || new Date(createdAtMs + STATUS_EXPIRY_MS).toISOString();
-  const expiresAtMs = new Date(expiresAt).getTime();
-  if (!Number.isFinite(expiresAtMs)) {
-    return null;
-  }
-
-  if (Date.now() >= expiresAtMs) {
-    return null;
-  }
+  const expiresAt = String(value.expiresAt || '').trim();
 
   const text = sanitizeText(value.text).slice(0, STATUS_TEXT_MAX_LENGTH);
   const mediaUrl = sanitizeMediaDataUrl(value.mediaUrl);
@@ -772,18 +903,12 @@ function sanitizeStatusList(value) {
     return [];
   }
 
-  const now = Date.now();
   const seenIds = new Set();
 
   return value
     .map((item) => sanitizeStatusRecord(item))
     .filter((item) => {
       if (!item) {
-        return false;
-      }
-
-      const expiresAtMs = new Date(item.expiresAt).getTime();
-      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) {
         return false;
       }
 
@@ -915,6 +1040,15 @@ function getMongoConfig() {
   };
 }
 
+function formatChatTime(value = Date.now()) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return chatTimeFormatter.format(new Date());
+  }
+
+  return chatTimeFormatter.format(new Date(timestamp));
+}
+
 async function getMongoCollections() {
   const mongo = getMongoConfig();
 
@@ -931,12 +1065,13 @@ async function getMongoCollections() {
       const users = db.collection('users');
       const messages = db.collection('messages');
       const meta = db.collection('meta');
+      const mediaBucket = new GridFSBucket(db, { bucketName: 'mediaFiles' });
 
       await users.createIndex({ email: 1 }, { unique: true });
       await users.createIndex({ usernameLower: 1 }, { unique: true });
       await messages.createIndex({ messageId: 1 });
 
-      return { users, messages, meta };
+      return { users, messages, meta, mediaBucket };
     });
   }
 
@@ -973,7 +1108,7 @@ async function initializeDataStore() {
     }
 
     if (existingMessagesCount === 0 && jsonMessages.length > 0) {
-      await collections.messages.insertMany(jsonMessages);
+      await collections.messages.insertMany(jsonMessages.map(serializeMessageForStorage));
     }
 
     await collections.meta.updateOne(
@@ -990,7 +1125,7 @@ async function initializeDataStore() {
   }
 
   usersCache = (await collections.users.find({}, { projection: { _id: 0 } }).toArray()).map(normalizeUser);
-  messagesCache = (await collections.messages.find({}, { projection: { _id: 0 } }).toArray()).map(normalizeStoredMessage);
+  messagesCache = (await collections.messages.find({}, { projection: { _id: 0 } }).toArray()).map(hydrateMessageFromStorage);
   writeMessages(messagesCache);
   await messagesWriteQueue;
   lastCacheRefreshAt = Date.now();
@@ -1015,7 +1150,7 @@ async function refreshCachesFromMongo({ force = false } = {}) {
     ]);
 
     usersCache = freshUsers.map(normalizeUser);
-    messagesCache = freshMessages.map(normalizeStoredMessage);
+    messagesCache = freshMessages.map(hydrateMessageFromStorage);
     lastCacheRefreshAt = Date.now();
   })()
     .catch((error) => {
@@ -1429,6 +1564,11 @@ app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
 
 app.use('/api', async (_req, _res, next) => {
+  if (String(_req.path || '').startsWith('/media/')) {
+    next();
+    return;
+  }
+
   try {
     await refreshCachesFromMongo();
     next();
@@ -1437,12 +1577,80 @@ app.use('/api', async (_req, _res, next) => {
   }
 });
 
+app.get('/api/media/:mediaId', async (req, res) => {
+  if (!req.session.username) {
+    return res.status(401).json({ error: 'You must be logged in to view media.' });
+  }
+
+  const mediaIdRaw = String(req.params.mediaId || '').trim();
+  if (!ObjectId.isValid(mediaIdRaw)) {
+    return res.status(404).json({ error: 'Media not found.' });
+  }
+
+  const mediaId = new ObjectId(mediaIdRaw);
+
+  try {
+    const collections = await getMongoCollections();
+    const files = await collections.mediaBucket.find({ _id: mediaId }).limit(1).toArray();
+    const mediaFile = files[0];
+
+    if (!mediaFile) {
+      return res.status(404).json({ error: 'Media not found.' });
+    }
+
+    const totalLength = Math.max(0, Number(mediaFile.length || 0));
+    const rangeHeader = String(req.headers.range || '').trim();
+
+    res.setHeader('Content-Type', String(mediaFile.contentType || 'application/octet-stream'));
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    let downloadStream;
+
+    if (rangeHeader && totalLength > 0) {
+      const match = rangeHeader.match(/^bytes=(\d*)-(\d*)$/i);
+      if (match) {
+        const start = match[1] ? Number.parseInt(match[1], 10) : 0;
+        const requestedEnd = match[2] ? Number.parseInt(match[2], 10) : totalLength - 1;
+        const end = Number.isFinite(requestedEnd) ? Math.min(requestedEnd, totalLength - 1) : totalLength - 1;
+
+        if (Number.isFinite(start) && start >= 0 && start <= end) {
+          res.status(206);
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLength}`);
+          res.setHeader('Content-Length', String(end - start + 1));
+          downloadStream = collections.mediaBucket.openDownloadStream(mediaId, {
+            start,
+            end: end + 1
+          });
+        }
+      }
+    }
+
+    if (!downloadStream) {
+      if (totalLength > 0) {
+        res.setHeader('Content-Length', String(totalLength));
+      }
+      downloadStream = collections.mediaBucket.openDownloadStream(mediaId);
+    }
+
+    downloadStream.on('error', () => {
+      if (!res.headersSent) {
+        res.status(404).end();
+      }
+    });
+
+    downloadStream.pipe(res);
+  } catch (_error) {
+    return res.status(500).json({ error: 'Unable to load media right now.' });
+  }
+});
+
 app.post('/api/media-upload', (req, res) => {
   if (!req.session.username) {
     return res.status(401).json({ error: 'You must be logged in to upload media.' });
   }
 
-  mediaUploadMiddleware.single('media')(req, res, (error) => {
+  mediaUploadMiddleware.single('media')(req, res, async (error) => {
     if (error) {
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'File is too large. Please choose a smaller file.' });
@@ -1461,14 +1669,37 @@ app.post('/api/media-upload', (req, res) => {
       return res.status(400).json({ error: 'Unsupported media type.' });
     }
 
-    return res.json({
-      ok: true,
-      mediaUrl: `/uploads/${req.file.filename}`,
-      mediaType,
-      mediaMimeType: mimeType,
-      size: Number(req.file.size || 0),
-      originalName: String(req.file.originalname || '').slice(0, 240)
-    });
+    try {
+      const collections = await getMongoCollections();
+      const uploadStream = collections.mediaBucket.openUploadStream(String(req.file.filename || `upload-${Date.now()}`), {
+        contentType: mimeType || 'application/octet-stream',
+        metadata: {
+          mediaType,
+          uploadedBy: String(req.session.username || '').slice(0, 30),
+          originalName: String(req.file.originalname || '').slice(0, 240),
+          uploadedAt: new Date().toISOString()
+        }
+      });
+
+      await pipeline(fs.createReadStream(req.file.path), uploadStream);
+
+      return res.json({
+        ok: true,
+        mediaUrl: `/api/media/${String(uploadStream.id)}`,
+        mediaType,
+        mediaMimeType: mimeType,
+        size: Number(req.file.size || 0),
+        originalName: String(req.file.originalname || '').slice(0, 240)
+      });
+    } catch (_uploadError) {
+      return res.status(500).json({ error: 'Upload failed. Please try again.' });
+    } finally {
+      if (req.file?.path) {
+        fs.promises.unlink(req.file.path).catch(() => {
+          // Ignore temp-file cleanup failures.
+        });
+      }
+    }
   });
 });
 
@@ -2743,7 +2974,7 @@ app.post('/api/status/view', (req, res) => {
   const statusIndex = activeStatuses.findIndex((item) => String(item?.statusId || '') === statusId);
 
   if (statusIndex < 0) {
-    return res.status(404).json({ error: 'Status not found or expired.' });
+    return res.status(404).json({ error: 'Status not found.' });
   }
 
   const activeStatus = activeStatuses[statusIndex];
@@ -2810,7 +3041,7 @@ app.post('/api/status/like', (req, res) => {
   const statusIndex = activeStatuses.findIndex((item) => String(item?.statusId || '') === statusId);
 
   if (statusIndex < 0) {
-    return res.status(404).json({ error: 'Status not found or expired.' });
+    return res.status(404).json({ error: 'Status not found.' });
   }
 
   const activeStatus = activeStatuses[statusIndex];
@@ -2895,7 +3126,7 @@ app.post('/api/status', (req, res) => {
     views: {},
     likes: {},
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + STATUS_EXPIRY_MS).toISOString()
+    expiresAt: ''
   };
 
   const existingStatuses = getActiveStatusesForUser(currentUser);
@@ -3126,7 +3357,7 @@ io.on('connection', (socket) => {
       mood: safeMood,
       replyTo: safeReplyTo,
       reactions: {},
-      sentAt: new Date().toLocaleTimeString()
+      sentAt: formatChatTime()
     };
 
     const allMessages = readMessages();
